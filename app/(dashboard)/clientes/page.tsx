@@ -201,7 +201,7 @@ function ClientesContent() {
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                         c.source_channel === 'wbuy' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
                       }`}>
-                        {c.source_channel === 'wbuy' ? 'wBuy' : 'Legado'}
+                        {c.source_channel === 'wbuy' ? 'wBuy' : 'Wix'}
                       </span>
                     </td>
                   </tr>

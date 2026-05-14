@@ -73,7 +73,7 @@ export default function CustomerProfilePage() {
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
               customer.source_channel === 'wbuy' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
             }`}>
-              {customer.source_channel === 'wbuy' ? 'wBuy' : 'Legado'}
+              {customer.source_channel === 'wbuy' ? 'wBuy' : 'Wix'}
             </span>
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
               customer.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'

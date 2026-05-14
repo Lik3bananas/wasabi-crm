@@ -146,7 +146,7 @@ function PedidosContent() {
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                         p.source_channel === 'wbuy' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
                       }`}>
-                        {p.source_channel === 'wbuy' ? 'wBuy' : 'Legado'}
+                        {p.source_channel === 'wbuy' ? 'wBuy' : 'Wix'}
                       </span>
                     </td>
                   </tr>
