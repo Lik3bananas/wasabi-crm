@@ -58,26 +58,40 @@ export async function GET(req: NextRequest) {
 
   const [rows, countRow] = await Promise.all([
     pool.query(
-      `SELECT
-        c.id,
-        c.full_name,
-        c.email,
-        c.phone,
-        c.source_channel,
-        c.total_spent,
-        c.purchase_count,
-        c.first_purchase_date,
-        c.last_purchase_date,
-        c.is_active,
-        TRIM(SPLIT_PART(c.address_city, '|', 1)) AS city,
-        TRIM(SPLIT_PART(c.address_state, '|', 1)) AS state
-      FROM customers c
-      ${where}
-      ${orderBy}
-      LIMIT $${p} OFFSET $${p + 1}`,
+      `SELECT id, full_name, email, phone, source_channel, total_spent, purchase_count,
+              first_purchase_date, last_purchase_date, is_active, city, state
+       FROM (
+         SELECT DISTINCT ON (COALESCE(LOWER(c.email), c.id::text))
+           c.id,
+           c.full_name,
+           c.email,
+           c.phone,
+           c.source_channel,
+           c.total_spent,
+           c.purchase_count,
+           c.first_purchase_date,
+           c.last_purchase_date,
+           c.is_active,
+           TRIM(SPLIT_PART(c.address_city, '|', 1)) AS city,
+           TRIM(SPLIT_PART(c.address_state, '|', 1)) AS state
+         FROM customers c
+         ${where}
+         ORDER BY COALESCE(LOWER(c.email), c.id::text),
+           CASE WHEN c.source_channel = 'wbuy' THEN 0 ELSE 1 END,
+           c.last_purchase_date DESC NULLS LAST
+       ) deduped
+       ${orderBy}
+       LIMIT $${p} OFFSET $${p + 1}`,
       [...params, limit, offset]
     ),
-    pool.query(`SELECT COUNT(*)::int AS total FROM customers c ${where}`, params),
+    pool.query(
+      `SELECT COUNT(*)::int AS total FROM (
+         SELECT DISTINCT ON (COALESCE(LOWER(c.email), c.id::text)) c.id
+         FROM customers c ${where}
+         ORDER BY COALESCE(LOWER(c.email), c.id::text)
+       ) deduped`,
+      params
+    ),
   ])
 
   return NextResponse.json({
