@@ -56,6 +56,7 @@ export async function GET(req: NextRequest) {
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
   const orderBy = filter === 'best_buyers' ? 'ORDER BY total_spent DESC NULLS LAST' : 'ORDER BY full_name ASC'
 
+  try {
   const [rows, countRow] = await Promise.all([
     pool.query(
       `SELECT id, full_name, email, phone, source_channel, total_spent, purchase_count,
@@ -66,7 +67,12 @@ export async function GET(req: NextRequest) {
            c.full_name,
            c.email,
            c.phone,
-           c.source_channel,
+           COALESCE(
+             (SELECT p.source_channel FROM purchases p
+              WHERE p.customer_id = c.id
+              ORDER BY p.purchase_date DESC LIMIT 1),
+             c.source_channel
+           ) AS source_channel,
            c.total_spent,
            c.purchase_count,
            c.first_purchase_date,
@@ -100,4 +106,8 @@ export async function GET(req: NextRequest) {
     page,
     totalPages: Math.ceil(countRow.rows[0].total / limit),
   })
+  } catch (err) {
+    console.error(err)
+    return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
+  }
 }

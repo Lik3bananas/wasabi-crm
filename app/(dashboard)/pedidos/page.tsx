@@ -21,7 +21,7 @@ function fmt(val: string | number) {
 
 function fmtDate(d: string) {
   if (!d) return '—'
-  return new Date(d).toLocaleDateString('pt-BR')
+  return new Date(d).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
 }
 
 const statusColor: Record<string, string> = {
@@ -62,12 +62,13 @@ function PedidosContent() {
   useEffect(() => {
     setLoading(true)
     fetch(`/api/purchases?${buildQuery()}`)
-      .then((r) => r.json())
+      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
       .then((d) => {
         setPurchases(d.purchases || [])
         setTotal(d.total || 0)
         setTotalPages(d.totalPages || 1)
       })
+      .catch(console.error)
       .finally(() => setLoading(false))
   }, [buildQuery])
 

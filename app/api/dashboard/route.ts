@@ -6,10 +6,12 @@ export async function GET() {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const client = await pool.connect()
   try {
+    // Use pool.query() (not a shared client) so each query runs on its own connection
+    // Running multiple client.query() in Promise.all on the same PoolClient causes
+    // "missing FROM-clause entry" errors due to concurrent query execution on one socket
     const [metrics, monthlySales, topCities] = await Promise.all([
-      client.query(`
+      pool.query(`
         SELECT
           COUNT(*)::int AS total_customers,
           COUNT(*) FILTER (WHERE is_active = true)::int AS active_customers,
@@ -20,7 +22,7 @@ export async function GET() {
           COUNT(*) FILTER (WHERE source_channel = 'legacy_spreadsheet')::int AS legacy_customers
         FROM customers
       `),
-      client.query(`
+      pool.query(`
         SELECT
           TO_CHAR(purchase_date, 'YYYY-MM') AS month,
           COUNT(*)::int AS orders,
@@ -31,7 +33,7 @@ export async function GET() {
         GROUP BY TO_CHAR(purchase_date, 'YYYY-MM')
         ORDER BY month ASC
       `),
-      client.query(`
+      pool.query(`
         SELECT
           TRIM(SPLIT_PART(address_city, '|', 1)) AS city,
           TRIM(SPLIT_PART(address_state, '|', 1)) AS state,
@@ -49,7 +51,8 @@ export async function GET() {
       monthlySales: monthlySales.rows,
       topCities: topCities.rows,
     })
-  } finally {
-    client.release()
+  } catch (err) {
+    console.error(err)
+    return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
   }
 }

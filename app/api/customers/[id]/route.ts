@@ -47,20 +47,46 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       [siblingIds]
     )
 
-    // All purchases from all sibling customer IDs
+    // All purchases from all sibling customer IDs — deduplicated.
+    // Duplicates arise from two sources:
+    //   1. Ghost R$0.00 wBuy records → filtered with total_amount > 0
+    //   2. Same purchase imported twice with MM/DD vs DD/MM date confusion:
+    //      the time-of-day (HH:MM:SS) is identical on both rows, so we use
+    //      DISTINCT ON (amount, time-of-day, status) to keep only one copy.
     const purchases = await client.query(
-      `SELECT
-         p.id,
-         p.purchase_date,
-         p.total_amount,
-         p.status,
-         p.source_channel,
-         c.source_channel AS customer_channel,
+      `WITH deduped AS (
+         SELECT DISTINCT ON (
+           p.total_amount::numeric,
+           p.purchase_date::time,
+           p.status
+         )
+           p.id,
+           p.purchase_date,
+           p.total_amount,
+           p.status,
+           p.source_channel,
+           c.source_channel AS customer_channel
+         FROM purchases p
+         JOIN customers c ON c.id = p.customer_id
+         WHERE p.customer_id = ANY($1)
+           AND p.total_amount::numeric > 0
+         ORDER BY
+           p.total_amount::numeric,
+           p.purchase_date::time,
+           p.status,
+           p.purchase_date DESC
+       )
+       SELECT
+         d.id,
+         d.purchase_date,
+         d.total_amount,
+         d.status,
+         d.source_channel,
+         d.customer_channel,
          COALESCE(
            JSON_AGG(
              JSON_BUILD_OBJECT(
                'product_name', pi.product_name,
-               'sku',          pi.sku,
                'quantity',     pi.quantity,
                'unit_price',   pi.unit_price,
                'total_price',  pi.total_price
@@ -68,12 +94,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
            ) FILTER (WHERE pi.id IS NOT NULL),
            '[]'
          ) AS items
-       FROM purchases p
-       JOIN customers c ON c.id = p.customer_id
-       LEFT JOIN purchase_items pi ON pi.purchase_id = p.id
-       WHERE p.customer_id = ANY($1)
-       GROUP BY p.id, c.source_channel
-       ORDER BY p.purchase_date DESC`,
+       FROM deduped d
+       LEFT JOIN purchase_items pi ON pi.purchase_id = d.id
+       GROUP BY d.id, d.purchase_date, d.total_amount, d.status, d.source_channel, d.customer_channel
+       ORDER BY d.purchase_date DESC`,
       [siblingIds]
     )
 
@@ -139,6 +163,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       addresses,
       purchases: purchases.rows,
     })
+  } catch (err) {
+    console.error(err)
+    return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
   } finally {
     client.release()
   }

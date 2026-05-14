@@ -46,7 +46,7 @@ function fmt(val: string | number) {
 
 function fmtDate(d: string) {
   if (!d) return '—'
-  return new Date(d).toLocaleDateString('pt-BR')
+  return new Date(d).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
 }
 
 const statusColor: Record<string, string> = {
@@ -81,8 +81,9 @@ export default function CustomerProfilePage() {
 
   useEffect(() => {
     fetch(`/api/customers/${id}`)
-      .then((r) => r.json())
+      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
       .then(setData)
+      .catch(console.error)
       .finally(() => setLoading(false))
   }, [id])
 
@@ -90,6 +91,11 @@ export default function CustomerProfilePage() {
   if (!data) return <div className="text-red-500 text-sm">Cliente não encontrado.</div>
 
   const { customer, emails, phones, addresses, purchases } = data
+
+  // Canal da última compra (purchases já vêm ordenados por data DESC)
+  const lastChannel = purchases.length > 0
+    ? (purchases[0].source_channel || purchases[0].customer_channel || customer.source_channel)
+    : customer.source_channel
 
   const totalRevenue = purchases
     .filter(p => p.status !== 'cancelled')
@@ -110,7 +116,7 @@ export default function CustomerProfilePage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-800">{customer.full_name}</h1>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <ChannelBadge channel={customer.source_channel} />
+            <ChannelBadge channel={lastChannel} />
             {customer.sibling_count > 1 && (
               <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-yellow-100 text-yellow-700">
                 {customer.sibling_count} registros unificados

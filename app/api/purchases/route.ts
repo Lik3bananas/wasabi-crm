@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
+  try {
   const [rows, countRow] = await Promise.all([
     pool.query(
       `SELECT
@@ -72,4 +73,8 @@ export async function GET(req: NextRequest) {
     page,
     totalPages: Math.ceil(countRow.rows[0].total / limit),
   })
+  } catch (err) {
+    console.error(err)
+    return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
+  }
 }
