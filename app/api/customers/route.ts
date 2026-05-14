@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
   else if (filter === 'inactive_90') conditions.push(`c.last_purchase_date < NOW() - INTERVAL '90 days'`)
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
-  const orderBy = filter === 'best_buyers' ? 'ORDER BY c.total_spent DESC NULLS LAST' : 'ORDER BY c.full_name ASC'
+  const orderBy = filter === 'best_buyers' ? 'ORDER BY total_spent DESC NULLS LAST' : 'ORDER BY full_name ASC'
 
   const [rows, countRow] = await Promise.all([
     pool.query(
