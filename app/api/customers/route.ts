@@ -13,6 +13,11 @@ export async function GET(req: NextRequest) {
   const filter = searchParams.get('filter') || ''
   const dateFrom = searchParams.get('date_from') || ''
   const dateTo = searchParams.get('date_to') || ''
+  const cepsParam = searchParams.get('ceps') || ''
+  // Normalise: keep only digits, drop anything shorter than 5 chars (incomplete CEP)
+  const cepList = cepsParam
+    ? cepsParam.split(',').map(c => c.replace(/\D/g, '')).filter(c => c.length >= 5)
+    : []
   const page = Math.max(1, Number(searchParams.get('page') || 1))
   const limit = 50
   const offset = (page - 1) * limit
@@ -46,6 +51,23 @@ export async function GET(req: NextRequest) {
   } else if (dateFrom) {
     conditions.push(`c.last_purchase_date >= $${p}`)
     params.push(dateFrom)
+    p++
+  }
+
+  if (cepList.length > 0) {
+    // Normalise the stored CEP the same way (strip dashes) before comparing.
+    // address_zipcode may contain pipe-separated values from multiple sources;
+    // we check ALL parts so that merged records are always found.
+    conditions.push(
+      `EXISTS (
+         SELECT 1
+         FROM UNNEST(STRING_TO_ARRAY(
+           REGEXP_REPLACE(COALESCE(c.address_zipcode,''), '-', '', 'g'), '|'
+         )) AS _z
+         WHERE TRIM(_z) = ANY($${p})
+       )`
+    )
+    params.push(cepList)
     p++
   }
 

@@ -38,6 +38,10 @@ function ClientesContent() {
   const [filter, setFilter] = useState(searchParams.get('filter') || '')
   const [dateFrom, setDateFrom] = useState(searchParams.get('date_from') || '')
   const [dateTo, setDateTo] = useState(searchParams.get('date_to') || '')
+  const [cepInput, setCepInput] = useState('')
+  const [ceps, setCeps] = useState<string[]>(
+    searchParams.get('ceps') ? searchParams.get('ceps')!.split(',').filter(Boolean) : []
+  )
   const [page, setPage] = useState(Number(searchParams.get('page') || 1))
 
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -54,9 +58,10 @@ function ClientesContent() {
     if (filter) p.set('filter', filter)
     if (dateFrom) p.set('date_from', dateFrom)
     if (dateTo) p.set('date_to', dateTo)
+    if (ceps.length > 0) p.set('ceps', ceps.join(','))
     p.set('page', String(page))
     return p.toString()
-  }, [search, city, state, filter, dateFrom, dateTo, page])
+  }, [search, city, state, filter, dateFrom, dateTo, ceps, page])
 
   useEffect(() => {
     setLoading(true)
@@ -77,7 +82,27 @@ function ClientesContent() {
   }
 
   function handleReset() {
-    setSearch(''); setCity(''); setState(''); setFilter(''); setDateFrom(''); setDateTo(''); setPage(1)
+    setSearch(''); setCity(''); setState(''); setFilter(''); setDateFrom(''); setDateTo('')
+    setCeps([]); setCepInput(''); setPage(1)
+  }
+
+  // Normalise and add a CEP chip (digits only, 8 chars max, up to 30 total)
+  function addCep(raw: string) {
+    const clean = raw.replace(/\D/g, '').slice(0, 8)
+    if (clean.length < 5) return
+    if (ceps.includes(clean)) { setCepInput(''); return }
+    if (ceps.length >= 30) return
+    setCeps(prev => [...prev, clean])
+    setCepInput('')
+  }
+
+  function removeCep(cep: string) {
+    setCeps(prev => prev.filter(c => c !== cep))
+  }
+
+  // Display format: XXXXX-XXX
+  function fmtCep(cep: string) {
+    return cep.length === 8 ? `${cep.slice(0, 5)}-${cep.slice(5)}` : cep
   }
 
   async function handleExport() {
@@ -160,6 +185,49 @@ function ClientesContent() {
               className="text-sm bg-green-600 text-white px-4 py-1.5 rounded-lg hover:bg-green-700 transition font-medium">
               Buscar
             </button>
+          </div>
+        </div>
+
+        {/* CEP multi-chip input */}
+        <div className="mt-3">
+          <p className="text-xs text-gray-500 mb-1.5">
+            Busca por CEP <span className="text-gray-400">(até 30 — pressione Enter ou vírgula para adicionar)</span>
+          </p>
+          <div className="flex flex-wrap gap-1.5 min-h-[36px] items-center border border-gray-300 rounded-lg px-2 py-1.5 bg-white focus-within:ring-2 focus-within:ring-green-500">
+            {ceps.map(cep => (
+              <span key={cep}
+                className="inline-flex items-center gap-1 bg-green-50 border border-green-200 text-green-800 text-xs font-mono rounded px-2 py-0.5">
+                {fmtCep(cep)}
+                <button
+                  type="button"
+                  onClick={() => removeCep(cep)}
+                  className="text-green-500 hover:text-green-700 leading-none ml-0.5"
+                  aria-label={`Remover CEP ${fmtCep(cep)}`}
+                >×</button>
+              </span>
+            ))}
+            {ceps.length < 30 && (
+              <input
+                type="text"
+                value={cepInput}
+                onChange={e => setCepInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ',' || e.key === ' ') {
+                    e.preventDefault()
+                    addCep(cepInput)
+                  } else if (e.key === 'Backspace' && cepInput === '' && ceps.length > 0) {
+                    setCeps(prev => prev.slice(0, -1))
+                  }
+                }}
+                onBlur={() => { if (cepInput) addCep(cepInput) }}
+                placeholder={ceps.length === 0 ? 'Ex: 22260003, 01310100...' : ''}
+                maxLength={9}
+                className="flex-1 min-w-[140px] outline-none text-sm font-mono placeholder:text-gray-400 py-0.5"
+              />
+            )}
+            {ceps.length >= 30 && (
+              <span className="text-xs text-gray-400 italic">Limite de 30 CEPs atingido</span>
+            )}
           </div>
         </div>
       </form>
