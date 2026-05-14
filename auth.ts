@@ -1,6 +1,5 @@
 import NextAuth from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
-import bcrypt from 'bcryptjs'
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: process.env.AUTH_SECRET,
@@ -14,18 +13,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!credentials?.username || !credentials?.password) return null
 
         const adminUsername = process.env.ADMIN_USERNAME
-        const adminHash = process.env.ADMIN_PASSWORD_HASH
+        const adminPassword = process.env.ADMIN_PASSWORD
 
-        if (!adminUsername || !adminHash) return null
-
+        if (!adminUsername || !adminPassword) return null
         if (credentials.username !== adminUsername) return null
-
-        const valid = await bcrypt.compare(
-          credentials.password as string,
-          adminHash
-        )
-
-        if (!valid) return null
+        if (credentials.password !== adminPassword) return null
 
         return { id: '1', name: 'Admin', email: 'admin@wasabi.com' }
       },
@@ -36,6 +28,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   session: {
     strategy: 'jwt',
-    maxAge: 8 * 60 * 60, // 8 horas
+    maxAge: 8 * 60 * 60,
   },
 })

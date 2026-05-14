@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/auth'
+import { getSession } from '@/lib/session'
 import pool from '@/lib/db'
 import ExcelJS from 'exceljs'
 
 export async function GET(req: NextRequest) {
-  const session = await auth()
+  const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = req.nextUrl
@@ -19,28 +19,24 @@ export async function GET(req: NextRequest) {
   const params: unknown[] = []
   let p = 1
 
-  if (search) {
-    conditions.push(`(c.full_name ILIKE $${p} OR EXISTS (SELECT 1 FROM customer_emails ce WHERE ce.customer_id = c.id AND ce.email ILIKE $${p}) OR EXISTS (SELECT 1 FROM customer_phones cp WHERE cp.customer_id = c.id AND cp.phone ILIKE $${p}))`)
-    params.push(`%${search}%`)
-    p++
-  }
-  if (city) { conditions.push(`EXISTS (SELECT 1 FROM customer_addresses ca WHERE ca.customer_id = c.id AND ca.city ILIKE $${p})`); params.push(`%${city}%`); p++ }
-  if (state) { conditions.push(`EXISTS (SELECT 1 FROM customer_addresses ca WHERE ca.customer_id = c.id AND ca.state ILIKE $${p})`); params.push(`%${state}%`); p++ }
-  if (dateFrom && dateTo) { conditions.push(`EXISTS (SELECT 1 FROM purchases pu WHERE pu.customer_id = c.id AND pu.purchase_date BETWEEN $${p} AND $${p + 1})`); params.push(dateFrom, dateTo); p += 2 }
+  if (search) { conditions.push(`(c.full_name ILIKE $${p} OR c.email ILIKE $${p} OR c.phone ILIKE $${p})`); params.push(`%${search}%`); p++ }
+  if (city) { conditions.push(`c.address_city ILIKE $${p}`); params.push(`%${city}%`); p++ }
+  if (state) { conditions.push(`c.address_state ILIKE $${p}`); params.push(`%${state}%`); p++ }
+  if (dateFrom && dateTo) { conditions.push(`EXISTS (SELECT 1 FROM purchases pu WHERE pu.customer_id = c.id AND pu.purchase_date BETWEEN $${p} AND $${p+1})`); params.push(dateFrom, dateTo); p += 2 }
   if (filter === 'inactive_30') conditions.push(`c.last_purchase_date < NOW() - INTERVAL '30 days'`)
   if (filter === 'inactive_60') conditions.push(`c.last_purchase_date < NOW() - INTERVAL '60 days'`)
   if (filter === 'inactive_90') conditions.push(`c.last_purchase_date < NOW() - INTERVAL '90 days'`)
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
-  const orderBy = filter === 'best_buyers' ? 'ORDER BY c.total_spent DESC' : 'ORDER BY c.full_name ASC'
+  const orderBy = filter === 'best_buyers' ? 'ORDER BY c.total_spent DESC NULLS LAST' : 'ORDER BY c.full_name ASC'
 
   const rows = await pool.query(
     `SELECT
       c.full_name AS "Nome",
-      (SELECT ce.email FROM customer_emails ce WHERE ce.customer_id = c.id AND ce.is_primary = true LIMIT 1) AS "Email",
-      (SELECT cp.phone FROM customer_phones cp WHERE cp.customer_id = c.id AND cp.is_primary = true LIMIT 1) AS "Telefone",
-      (SELECT ca.city FROM customer_addresses ca WHERE ca.customer_id = c.id AND ca.is_primary = true LIMIT 1) AS "Cidade",
-      (SELECT ca.state FROM customer_addresses ca WHERE ca.customer_id = c.id AND ca.is_primary = true LIMIT 1) AS "Estado",
+      c.email AS "Email",
+      c.phone AS "Telefone",
+      TRIM(SPLIT_PART(c.address_city, '|', 1)) AS "Cidade",
+      TRIM(SPLIT_PART(c.address_state, '|', 1)) AS "Estado",
       c.total_spent AS "Total Gasto (R$)",
       c.purchase_count AS "Nº Pedidos",
       c.first_purchase_date AS "Primeira Compra",
@@ -55,17 +51,9 @@ export async function GET(req: NextRequest) {
   const sheet = workbook.addWorksheet('Clientes')
 
   if (rows.rows.length > 0) {
-    sheet.columns = Object.keys(rows.rows[0]).map((key) => ({
-      header: key,
-      key,
-      width: 22,
-    }))
-    sheet.getRow(1).font = { bold: true }
-    sheet.getRow(1).fill = {
-      type: 'pattern', pattern: 'solid',
-      fgColor: { argb: 'FF166534' },
-    }
+    sheet.columns = Object.keys(rows.rows[0]).map((key) => ({ header: key, key, width: 22 }))
     sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF166534' } }
     rows.rows.forEach((row) => sheet.addRow(row))
   }
 

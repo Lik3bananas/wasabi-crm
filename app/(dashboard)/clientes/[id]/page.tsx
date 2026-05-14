@@ -29,10 +29,16 @@ function fmtDate(d: string) {
 }
 
 const statusColor: Record<string, string> = {
-  concluido: 'bg-green-100 text-green-700',
-  pendente: 'bg-yellow-100 text-yellow-700',
-  cancelado: 'bg-red-100 text-red-700',
-  processando: 'bg-blue-100 text-blue-700',
+  completed: 'bg-green-100 text-green-700',
+  pending: 'bg-yellow-100 text-yellow-700',
+  cancelled: 'bg-red-100 text-red-700',
+  processing: 'bg-blue-100 text-blue-700',
+}
+const statusLabel: Record<string, string> = {
+  completed: 'Concluído',
+  pending: 'Pendente',
+  cancelled: 'Cancelado',
+  processing: 'Processando',
 }
 
 export default function CustomerProfilePage() {
@@ -145,7 +151,7 @@ export default function CustomerProfilePage() {
                     <span className="text-gray-400 text-xs">#{p.id}</span>
                     <span>{fmtDate(p.purchase_date)}</span>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor[p.status] || 'bg-gray-100 text-gray-600'}`}>
-                      {p.status}
+                      {statusLabel[p.status] || p.status}
                     </span>
                   </div>
                   <div className="flex items-center gap-4">

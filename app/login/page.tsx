@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
@@ -16,17 +15,18 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
 
-    const res = await signIn('credentials', {
-      username,
-      password,
-      redirect: false,
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
     })
 
-    if (res?.error) {
-      setError('Usuário ou senha incorretos.')
+    if (!res.ok) {
+      const data = await res.json()
+      setError(data.error || 'Erro ao fazer login.')
       setLoading(false)
     } else {
-      router.push('/')
+      router.push('/dashboard')
     }
   }
 
@@ -65,9 +65,7 @@ export default function LoginPage() {
             />
           </div>
 
-          {error && (
-            <p className="text-red-600 text-sm text-center">{error}</p>
-          )}
+          {error && <p className="text-red-600 text-sm text-center">{error}</p>}
 
           <button
             type="submit"

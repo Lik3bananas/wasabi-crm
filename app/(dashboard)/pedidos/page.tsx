@@ -25,10 +25,16 @@ function fmtDate(d: string) {
 }
 
 const statusColor: Record<string, string> = {
-  concluido: 'bg-green-100 text-green-700',
-  pendente: 'bg-yellow-100 text-yellow-700',
-  cancelado: 'bg-red-100 text-red-700',
-  processando: 'bg-blue-100 text-blue-700',
+  completed: 'bg-green-100 text-green-700',
+  pending: 'bg-yellow-100 text-yellow-700',
+  cancelled: 'bg-red-100 text-red-700',
+  processing: 'bg-blue-100 text-blue-700',
+}
+const statusLabel: Record<string, string> = {
+  completed: 'Concluído',
+  pending: 'Pendente',
+  cancelled: 'Cancelado',
+  processing: 'Processando',
 }
 
 function PedidosContent() {
@@ -81,10 +87,10 @@ function PedidosContent() {
           <select value={status} onChange={(e) => setStatus(e.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white">
             <option value="">Todos os status</option>
-            <option value="concluido">Concluído</option>
-            <option value="pendente">Pendente</option>
-            <option value="processando">Processando</option>
-            <option value="cancelado">Cancelado</option>
+            <option value="completed">Concluído</option>
+            <option value="pending">Pendente</option>
+            <option value="processing">Processando</option>
+            <option value="cancelled">Cancelado</option>
           </select>
           <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
@@ -131,7 +137,7 @@ function PedidosContent() {
                     <td className="px-4 py-3 text-gray-600">{fmtDate(p.purchase_date)}</td>
                     <td className="px-4 py-3">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor[p.status] || 'bg-gray-100 text-gray-600'}`}>
-                        {p.status}
+                        {statusLabel[p.status] || p.status}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right font-semibold text-gray-800">{fmt(p.total_amount)}</td>

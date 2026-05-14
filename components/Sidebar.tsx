@@ -1,11 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { signOut } from 'next-auth/react'
+import { usePathname, useRouter } from 'next/navigation'
 
 const nav = [
-  { href: '/', label: 'Dashboard', icon: '📊' },
+  { href: '/dashboard', label: 'Dashboard', icon: '📊' },
   { href: '/clientes', label: 'Clientes', icon: '👥' },
   { href: '/pedidos', label: 'Pedidos', icon: '🛍️' },
   { href: '/carrinho', label: 'Carrinho Abandonado', icon: '🛒' },
@@ -13,6 +12,12 @@ const nav = [
 
 export default function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+
+  async function handleLogout() {
+    await fetch('/api/auth/logout', { method: 'POST' })
+    router.push('/login')
+  }
 
   return (
     <aside className="w-60 min-h-screen bg-green-900 text-white flex flex-col">
@@ -30,7 +35,7 @@ export default function Sidebar() {
 
       <nav className="flex-1 px-3 py-4 space-y-1">
         {nav.map((item) => {
-          const active = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))
+          const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
           return (
             <Link
               key={item.href}
@@ -50,7 +55,7 @@ export default function Sidebar() {
 
       <div className="px-3 py-4 border-t border-green-800">
         <button
-          onClick={() => signOut({ callbackUrl: '/login' })}
+          onClick={handleLogout}
           className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-green-200 hover:bg-green-800 hover:text-white transition"
         >
           <span>🚪</span>
