@@ -47,18 +47,28 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       [siblingIds]
     )
 
-    // All purchases from all sibling customer IDs — deduplicated.
-    // Duplicates arise from two sources:
-    //   1. Ghost R$0.00 wBuy records → filtered with total_amount > 0
-    //   2. Same purchase imported twice with MM/DD vs DD/MM date confusion:
-    //      the time-of-day (HH:MM:SS) is identical on both rows, so we use
-    //      DISTINCT ON (amount, time-of-day, status) to keep only one copy.
+    // All purchases from all sibling customer IDs — deduplicated in two passes.
+    //
+    // Pass 1 — DD/MM vs MM/DD import confusion (cross-sibling):
+    //   The same purchase lands on two customer records with swapped month/day but
+    //   IDENTICAL HH:MM:SS. Collapse by (amount, time-of-day, status, channel),
+    //   keeping the most-recent calendar date.
+    //
+    // Pass 2 — wBuy checkout-step ghost rows (same customer):
+    //   wBuy creates a new row at each checkout step (payment init, retry, confirm)
+    //   for the same order → same amount, same day, different timestamps minutes
+    //   apart. Collapse by (amount, calendar-date, status, channel), keeping the
+    //   last timestamp (= the finalised transaction).
+    //
+    // Ghost R$0.00 rows (wBuy mirror records) are removed upfront.
     const purchases = await client.query(
-      `WITH deduped AS (
+      `WITH
+       pass1 AS (
          SELECT DISTINCT ON (
            p.total_amount::numeric,
            p.purchase_date::time,
-           p.status
+           p.status,
+           p.source_channel
          )
            p.id,
            p.purchase_date,
@@ -74,7 +84,29 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
            p.total_amount::numeric,
            p.purchase_date::time,
            p.status,
+           p.source_channel,
            p.purchase_date DESC
+       ),
+       deduped AS (
+         SELECT DISTINCT ON (
+           total_amount::numeric,
+           purchase_date::date,
+           status,
+           source_channel
+         )
+           id,
+           purchase_date,
+           total_amount,
+           status,
+           source_channel,
+           customer_channel
+         FROM pass1
+         ORDER BY
+           total_amount::numeric,
+           purchase_date::date,
+           status,
+           source_channel,
+           purchase_date DESC
        )
        SELECT
          d.id,
