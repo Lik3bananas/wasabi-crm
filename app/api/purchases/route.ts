@@ -2,6 +2,21 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import pool from '@/lib/db'
 
+const PT_LOWER = new Set(['de','da','do','das','dos','e','em','na','no','nas','nos','com','por','para','a','o','as','os','ao','aos'])
+
+function toTitleCase(name: string | null): string | null {
+  if (!name) return name
+  return name
+    .toLowerCase()
+    .split(' ')
+    .map((word, i) => {
+      if (!word) return word
+      if (i === 0 || !PT_LOWER.has(word)) return word.charAt(0).toUpperCase() + word.slice(1)
+      return word
+    })
+    .join(' ')
+}
+
 export async function GET(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -48,7 +63,19 @@ export async function GET(req: NextRequest) {
       `SELECT
         pu.id, pu.customer_id, c.full_name AS customer_name,
         pu.purchase_date, pu.total_amount, pu.status, pu.source_channel,
-        COUNT(pi.id)::int AS item_count
+        COUNT(pi.id)::int AS item_count,
+        COALESCE(
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'product_name', pi.product_name,
+              'sku',          pi.product_sku,
+              'quantity',     pi.quantity,
+              'unit_price',   pi.unit_price,
+              'total_price',  pi.total_price
+            ) ORDER BY pi.id
+          ) FILTER (WHERE pi.id IS NOT NULL),
+          '[]'
+        ) AS items
        FROM purchases pu
        JOIN customers c ON c.id = pu.customer_id
        LEFT JOIN purchase_items pi ON pi.purchase_id = pu.id
@@ -67,8 +94,28 @@ export async function GET(req: NextRequest) {
     ),
   ])
 
+  type PurchaseRow = { customer_name: string; total_amount: string; items: { unit_price: string; total_price: string }[] }
+
+  const normalized = (rows.rows as PurchaseRow[]).map((p) => {
+    const items = p.items || []
+    const itemsSum = items.reduce((s, i) => s + Number(i.total_price), 0)
+    const purchaseTotal = Number(p.total_amount)
+    const adjustedItems = (items.length > 0 && itemsSum > 0 && Math.abs(itemsSum - purchaseTotal) > 0.01)
+      ? items.map(item => ({
+          ...item,
+          unit_price:  (Number(item.unit_price)  * (purchaseTotal / itemsSum)).toFixed(2),
+          total_price: (Number(item.total_price) * (purchaseTotal / itemsSum)).toFixed(2),
+        }))
+      : items
+    return {
+      ...p,
+      customer_name: toTitleCase(p.customer_name),
+      items: adjustedItems,
+    }
+  })
+
   return NextResponse.json({
-    purchases: rows.rows,
+    purchases: normalized,
     total: countRow.rows[0].total,
     page,
     totalPages: Math.ceil(countRow.rows[0].total / limit),

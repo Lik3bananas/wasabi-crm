@@ -1,9 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import Link from 'next/link'
+import { useCallback, useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Suspense } from 'react'
 
 interface Customer {
   id: number
@@ -32,17 +30,25 @@ function ClientesContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  const [search, setSearch] = useState(searchParams.get('search') || '')
-  const [city, setCity] = useState(searchParams.get('city') || '')
-  const [state, setState] = useState(searchParams.get('state') || '')
-  const [filter, setFilter] = useState(searchParams.get('filter') || '')
+  const [search, setSearch]   = useState(searchParams.get('search') || '')
+  const [city, setCity]       = useState(searchParams.get('city') || '')
+  const [state, setState]     = useState(searchParams.get('state') || '')
+  const [filter, setFilter]   = useState(searchParams.get('filter') || '')
   const [dateFrom, setDateFrom] = useState(searchParams.get('date_from') || '')
-  const [dateTo, setDateTo] = useState(searchParams.get('date_to') || '')
+  const [dateTo, setDateTo]   = useState(searchParams.get('date_to') || '')
   const [cepInput, setCepInput] = useState('')
   const [ceps, setCeps] = useState<string[]>(
     searchParams.get('ceps') ? searchParams.get('ceps')!.split(',').filter(Boolean) : []
   )
   const [page, setPage] = useState(Number(searchParams.get('page') || 1))
+
+  // Advanced segmentation
+  const [inactivePreset, setInactivePreset]       = useState(searchParams.get('inactive_preset') || '')
+  const [customInactiveDays, setCustomInactiveDays] = useState(searchParams.get('inactive_days') || '')
+  const [purchasePreset, setPurchasePreset]       = useState(searchParams.get('purchase_preset') || '')
+  const [customMinPurchases, setCustomMinPurchases] = useState('')
+  const [sortBy,  setSortBy]  = useState('name')
+  const [sortDir, setSortDir] = useState<'asc'|'desc'>('asc')
 
   const [customers, setCustomers] = useState<Customer[]>([])
   const [total, setTotal] = useState(0)
@@ -52,16 +58,37 @@ function ClientesContent() {
 
   const buildQuery = useCallback(() => {
     const p = new URLSearchParams()
-    if (search) p.set('search', search)
-    if (city) p.set('city', city)
-    if (state) p.set('state', state)
-    if (filter) p.set('filter', filter)
+    if (search)   p.set('search',   search)
+    if (city)     p.set('city',     city)
+    if (state)    p.set('state',    state)
+    if (filter)   p.set('filter',   filter)
     if (dateFrom) p.set('date_from', dateFrom)
-    if (dateTo) p.set('date_to', dateTo)
+    if (dateTo)   p.set('date_to',   dateTo)
     if (ceps.length > 0) p.set('ceps', ceps.join(','))
+
+    // Inactivity segmentation
+    const inactiveDays = inactivePreset === 'custom'
+      ? Number(customInactiveDays)
+      : Number(inactivePreset)
+    if (inactiveDays > 0) p.set('inactive_days', String(inactiveDays))
+    if (inactivePreset)   p.set('inactive_preset', inactivePreset)
+
+    // Purchase frequency segmentation
+    if (purchasePreset === '1_only') {
+      p.set('min_purchases', '1')
+      p.set('max_purchases', '1')
+    } else if (purchasePreset === 'custom') {
+      const v = Number(customMinPurchases)
+      if (v > 0) p.set('min_purchases', String(v))
+    } else if (purchasePreset) {
+      p.set('min_purchases', purchasePreset)
+    }
+    if (purchasePreset) p.set('purchase_preset', purchasePreset)
+    p.set('sort_by',  sortBy)
+    p.set('sort_dir', sortDir)
     p.set('page', String(page))
     return p.toString()
-  }, [search, city, state, filter, dateFrom, dateTo, ceps, page])
+  }, [search, city, state, filter, dateFrom, dateTo, ceps, inactivePreset, customInactiveDays, purchasePreset, customMinPurchases, sortBy, sortDir, page])
 
   useEffect(() => {
     setLoading(true)
@@ -81,9 +108,27 @@ function ClientesContent() {
     setPage(1)
   }
 
+  function handleSort(col: string) {
+    if (sortBy === col) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortBy(col)
+      setSortDir('asc')
+    }
+    setPage(1)
+  }
+
+  function SortIcon({ col }: { col: string }) {
+    if (sortBy !== col) return <span className="ml-1 text-gray-300">↕</span>
+    return <span className="ml-1 text-green-600">{sortDir === 'asc' ? '↑' : '↓'}</span>
+  }
+
   function handleReset() {
     setSearch(''); setCity(''); setState(''); setFilter(''); setDateFrom(''); setDateTo('')
-    setCeps([]); setCepInput(''); setPage(1)
+    setCeps([]); setCepInput('')
+    setInactivePreset(''); setCustomInactiveDays('')
+    setPurchasePreset(''); setCustomMinPurchases('')
+    setPage(1)
   }
 
   // Normalise and add a CEP chip (digits only, 8 chars max, up to 30 total)
@@ -136,6 +181,8 @@ function ClientesContent() {
       </div>
 
       <form onSubmit={handleSearch} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
+
+        {/* Row 1 — basic search */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
           <input
             value={search}
@@ -162,11 +209,110 @@ function ClientesContent() {
           >
             <option value="">Todos os clientes</option>
             <option value="best_buyers">Melhores compradores</option>
-            <option value="inactive_30">Inativos há +30 dias</option>
-            <option value="inactive_60">Inativos há +60 dias</option>
-            <option value="inactive_90">Inativos há +90 dias</option>
           </select>
         </div>
+
+        {/* Row 2 — advanced segmentation */}
+        <div className="border border-gray-100 rounded-lg p-3 mb-3 bg-gray-50">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Segmentação de comportamento</p>
+          <div className="flex flex-wrap gap-3 items-start">
+
+            {/* Inactivity filter */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500">Inativo há</label>
+              <div className="flex gap-2 items-center">
+                <select
+                  value={inactivePreset}
+                  onChange={(e) => { setInactivePreset(e.target.value); setCustomInactiveDays('') }}
+                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                >
+                  <option value="">Qualquer período</option>
+                  <option value="30">+ 30 dias</option>
+                  <option value="60">+ 60 dias</option>
+                  <option value="90">+ 90 dias</option>
+                  <option value="180">+ 6 meses</option>
+                  <option value="365">+ 1 ano</option>
+                  <option value="730">+ 2 anos</option>
+                  <option value="custom">Personalizado...</option>
+                </select>
+                {inactivePreset === 'custom' && (
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min={1}
+                      value={customInactiveDays}
+                      onChange={(e) => setCustomInactiveDays(e.target.value)}
+                      placeholder="dias"
+                      className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-24 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                    <span className="text-xs text-gray-400">dias</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Purchase count filter */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500">Nº de compras</label>
+              <div className="flex gap-2 items-center">
+                <select
+                  value={purchasePreset}
+                  onChange={(e) => { setPurchasePreset(e.target.value); setCustomMinPurchases('') }}
+                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                >
+                  <option value="">Qualquer</option>
+                  <option value="1_only">Apenas 1 (sem retorno)</option>
+                  <option value="2">2 ou mais</option>
+                  <option value="3">3 ou mais</option>
+                  <option value="4">4 ou mais</option>
+                  <option value="5">5 ou mais</option>
+                  <option value="custom">Personalizado...</option>
+                </select>
+                {purchasePreset === 'custom' && (
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min={1}
+                      value={customMinPurchases}
+                      onChange={(e) => setCustomMinPurchases(e.target.value)}
+                      placeholder="mín"
+                      className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-20 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                    <span className="text-xs text-gray-400">ou mais</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Active filter summary badge */}
+            {(inactivePreset || purchasePreset) && (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 opacity-0">.</label>
+                <div className="flex items-center gap-1 flex-wrap">
+                  {inactivePreset && (
+                    <span className="text-xs px-2 py-1 rounded-full bg-orange-100 text-orange-700 font-medium">
+                      Inativo {inactivePreset === 'custom'
+                        ? `+${customInactiveDays || '?'} dias`
+                        : inactivePreset === '180' ? '+6 meses'
+                        : inactivePreset === '365' ? '+1 ano'
+                        : inactivePreset === '730' ? '+2 anos'
+                        : `+${inactivePreset} dias`}
+                    </span>
+                  )}
+                  {purchasePreset && (
+                    <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700 font-medium">
+                      {purchasePreset === '1_only' ? '1 compra apenas'
+                        : purchasePreset === 'custom' ? `${customMinPurchases || '?'}+ compras`
+                        : `${purchasePreset}+ compras`}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Row 3 — date range + actions */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <span>Compras entre</span>
@@ -242,13 +388,33 @@ function ClientesContent() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Nome</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <button onClick={() => handleSort('name')} className="flex items-center hover:text-gray-700 transition">
+                      Nome<SortIcon col="name" />
+                    </button>
+                  </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Contato</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Cidade</th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Gasto</th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Pedidos</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Última Compra</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Canal</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <button onClick={() => handleSort('total_spent')} className="flex items-center ml-auto hover:text-gray-700 transition">
+                      Total Gasto<SortIcon col="total_spent" />
+                    </button>
+                  </th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <button onClick={() => handleSort('purchase_count')} className="flex items-center ml-auto hover:text-gray-700 transition">
+                      Pedidos<SortIcon col="purchase_count" />
+                    </button>
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <button onClick={() => handleSort('last_purchase')} className="flex items-center hover:text-gray-700 transition">
+                      Última Compra<SortIcon col="last_purchase" />
+                    </button>
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <button onClick={() => handleSort('channel')} className="flex items-center hover:text-gray-700 transition">
+                      Canal<SortIcon col="channel" />
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -268,9 +434,15 @@ function ClientesContent() {
                     <td className="px-4 py-3 text-gray-500">{fmtDate(c.last_purchase_date)}</td>
                     <td className="px-4 py-3">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                        c.source_channel === 'wbuy' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                        c.source_channel === 'wbuy' ? 'bg-blue-100 text-blue-700'
+                        : c.source_channel === 'pdvnet' ? 'bg-orange-100 text-orange-700'
+                        : c.source_channel === 'legacy' || c.source_channel === 'legacy_spreadsheet' ? 'bg-yellow-100 text-yellow-700'
+                        : 'bg-purple-100 text-purple-700'
                       }`}>
-                        {c.source_channel === 'wbuy' ? 'wBuy' : 'Wix'}
+                        {c.source_channel === 'wbuy' ? 'wBuy'
+                          : c.source_channel === 'pdvnet' ? 'PDVNet'
+                          : c.source_channel === 'legacy' || c.source_channel === 'legacy_spreadsheet' ? 'Planilha'
+                          : 'Wix'}
                       </span>
                     </td>
                   </tr>

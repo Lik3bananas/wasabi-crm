@@ -62,12 +62,22 @@ const statusLabel: Record<string, string> = {
   processing: 'Processando',
 }
 
+function channelLabel(ch: string) {
+  if (ch === 'wbuy') return 'wBuy'
+  if (ch === 'pdvnet') return 'PDVNet'
+  if (ch === 'legacy' || ch === 'legacy_spreadsheet') return 'Planilha'
+  return 'Wix'
+}
+function channelClass(ch: string) {
+  if (ch === 'wbuy') return 'bg-blue-100 text-blue-700'
+  if (ch === 'pdvnet') return 'bg-orange-100 text-orange-700'
+  if (ch === 'legacy' || ch === 'legacy_spreadsheet') return 'bg-yellow-100 text-yellow-700'
+  return 'bg-purple-100 text-purple-700'
+}
 function ChannelBadge({ channel }: { channel: string }) {
   return (
-    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-      channel === 'wbuy' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
-    }`}>
-      {channel === 'wbuy' ? 'wBuy' : 'Wix'}
+    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelClass(channel)}`}>
+      {channelLabel(channel)}
     </span>
   )
 }

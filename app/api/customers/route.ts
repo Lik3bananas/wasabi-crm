@@ -2,6 +2,23 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import pool from '@/lib/db'
 
+// Prepositions and conjunctions that stay lowercase (Portuguese)
+const PT_LOWER = new Set(['de','da','do','das','dos','e','em','na','no','nas','nos','com','por','para','a','o','as','os','ao','aos'])
+
+function toTitleCase(name: string | null): string | null {
+  if (!name) return name
+  return name
+    .toLowerCase()
+    .split(' ')
+    .map((word, i) => {
+      if (!word) return word
+      // Always capitalize first word and words not in the preposition list
+      if (i === 0 || !PT_LOWER.has(word)) return word.charAt(0).toUpperCase() + word.slice(1)
+      return word
+    })
+    .join(' ')
+}
+
 export async function GET(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -22,7 +39,8 @@ export async function GET(req: NextRequest) {
   const limit = 50
   const offset = (page - 1) * limit
 
-  const conditions: string[] = []
+  // Always exclude inactive (test/training) customers
+  const conditions: string[] = ['c.is_active = true']
   const params: unknown[] = []
   let p = 1
 
@@ -45,11 +63,12 @@ export async function GET(req: NextRequest) {
   }
 
   if (dateFrom && dateTo) {
-    conditions.push(`EXISTS (SELECT 1 FROM purchases pu WHERE pu.customer_id = c.id AND pu.purchase_date BETWEEN $${p} AND $${p + 1})`)
+    conditions.push(`EXISTS (SELECT 1 FROM purchases pu WHERE pu.customer_id = c.id AND pu.purchase_date BETWEEN $${p} AND $${p + 1}::date + INTERVAL '1 day')`)
     params.push(dateFrom, dateTo)
     p += 2
   } else if (dateFrom) {
-    conditions.push(`c.last_purchase_date >= $${p}`)
+    // Use actual purchase records — last_purchase_date column may have DD/MM swap errors from import
+    conditions.push(`EXISTS (SELECT 1 FROM purchases pu WHERE pu.customer_id = c.id AND pu.purchase_date >= $${p})`)
     params.push(dateFrom)
     p++
   }
@@ -71,12 +90,51 @@ export async function GET(req: NextRequest) {
     p++
   }
 
+  // Legacy inactive shortcuts
   if (filter === 'inactive_30') conditions.push(`c.last_purchase_date < NOW() - INTERVAL '30 days'`)
   else if (filter === 'inactive_60') conditions.push(`c.last_purchase_date < NOW() - INTERVAL '60 days'`)
   else if (filter === 'inactive_90') conditions.push(`c.last_purchase_date < NOW() - INTERVAL '90 days'`)
 
+  // Advanced segmentation: inactivity in days
+  const inactiveDays = Number(searchParams.get('inactive_days') || 0)
+  if (inactiveDays > 0) {
+    conditions.push(`c.last_purchase_date < NOW() - (INTERVAL '1 day' * $${p}::int)`)
+    params.push(inactiveDays)
+    p++
+  }
+
+  // Advanced segmentation: min purchases
+  const minPurchases = Number(searchParams.get('min_purchases') || 0)
+  if (minPurchases > 0) {
+    conditions.push(`c.purchase_count >= $${p}`)
+    params.push(minPurchases)
+    p++
+  }
+
+  // Advanced segmentation: max purchases (e.g. one-time buyers = max 1)
+  const maxPurchases = Number(searchParams.get('max_purchases') || 0)
+  if (maxPurchases > 0) {
+    conditions.push(`c.purchase_count <= $${p}`)
+    params.push(maxPurchases)
+    p++
+  }
+
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
-  const orderBy = filter === 'best_buyers' ? 'ORDER BY total_spent DESC NULLS LAST' : 'ORDER BY full_name ASC'
+
+  const sortBy  = searchParams.get('sort_by')  || 'name'
+  const sortDir = searchParams.get('sort_dir') === 'desc' ? 'DESC' : 'ASC'
+  const sortCol: Record<string, string> = {
+    name:          'full_name',
+    total_spent:   'total_spent',
+    purchase_count:'purchase_count',
+    last_purchase: 'last_purchase_date',
+    channel:       'source_channel',
+  }
+  const col = sortCol[sortBy] || 'full_name'
+  // best_buyers filter overrides sort
+  const orderBy = filter === 'best_buyers'
+    ? 'ORDER BY total_spent DESC NULLS LAST'
+    : `ORDER BY ${col} ${sortDir} NULLS LAST`
 
   try {
   const [rows, countRow] = await Promise.all([
@@ -122,8 +180,13 @@ export async function GET(req: NextRequest) {
     ),
   ])
 
+  const normalized = rows.rows.map((c: { full_name: string }) => ({
+    ...c,
+    full_name: toTitleCase(c.full_name),
+  }))
+
   return NextResponse.json({
-    customers: rows.rows,
+    customers: normalized,
     total: countRow.rows[0].total,
     page,
     totalPages: Math.ceil(countRow.rows[0].total / limit),
