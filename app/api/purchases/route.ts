@@ -96,23 +96,10 @@ export async function GET(req: NextRequest) {
 
   type PurchaseRow = { customer_name: string; total_amount: string; items: { unit_price: string; total_price: string }[] }
 
-  const normalized = (rows.rows as PurchaseRow[]).map((p) => {
-    const items = p.items || []
-    const itemsSum = items.reduce((s, i) => s + Number(i.total_price), 0)
-    const purchaseTotal = Number(p.total_amount)
-    const adjustedItems = (items.length > 0 && itemsSum > 0 && Math.abs(itemsSum - purchaseTotal) > 0.01)
-      ? items.map(item => ({
-          ...item,
-          unit_price:  (Number(item.unit_price)  * (purchaseTotal / itemsSum)).toFixed(2),
-          total_price: (Number(item.total_price) * (purchaseTotal / itemsSum)).toFixed(2),
-        }))
-      : items
-    return {
-      ...p,
-      customer_name: toTitleCase(p.customer_name),
-      items: adjustedItems,
-    }
-  })
+  const normalized = (rows.rows as PurchaseRow[]).map((p) => ({
+    ...p,
+    customer_name: toTitleCase(p.customer_name),
+  }))
 
   return NextResponse.json({
     purchases: normalized,

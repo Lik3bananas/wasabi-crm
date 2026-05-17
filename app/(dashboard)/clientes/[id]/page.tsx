@@ -281,10 +281,31 @@ export default function CustomerProfilePage() {
                           ))}
                         </tbody>
                         <tfoot>
-                          <tr className="border-t border-gray-200">
-                            <td colSpan={4} className="pt-2 text-right text-gray-500 font-medium">Total do pedido</td>
-                            <td className="pt-2 text-right font-bold text-green-700">{fmt(p.total_amount)}</td>
-                          </tr>
+                          {(() => {
+                            const itemsSum = (p.items || []).reduce((s, i) => s + Number(i.total_price), 0)
+                            const paid = Number(p.total_amount)
+                            const discount = itemsSum - paid
+                            return (
+                              <>
+                                {discount > 0.01 && (
+                                  <>
+                                    <tr>
+                                      <td colSpan={4} className="pt-2 text-right text-gray-400">Subtotal</td>
+                                      <td className="pt-2 text-right text-gray-500">{fmt(itemsSum)}</td>
+                                    </tr>
+                                    <tr>
+                                      <td colSpan={4} className="text-right text-red-500">Desconto</td>
+                                      <td className="text-right text-red-500 font-medium">-{fmt(discount)}</td>
+                                    </tr>
+                                  </>
+                                )}
+                                <tr className="border-t border-gray-200">
+                                  <td colSpan={4} className="pt-2 text-right text-gray-500 font-medium">Total pago</td>
+                                  <td className="pt-2 text-right font-bold text-green-700">{fmt(p.total_amount)}</td>
+                                </tr>
+                              </>
+                            )
+                          })()}
                         </tfoot>
                       </table>
                     )}

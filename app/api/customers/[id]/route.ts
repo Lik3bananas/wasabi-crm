@@ -246,31 +246,6 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         is_primary: i === 0,
       }))
 
-    // Adjust item prices proportionally to match actual purchase total_amount.
-    // PDVNet stores items at full retail price but applies discounts at order level,
-    // so items sum may not match the purchase total. Scale each item's price so that
-    // the sum equals total_amount (what the customer actually paid).
-    type RawItem = { product_name: string; sku: string; quantity: number; unit_price: string; total_price: string }
-    type RawPurchase = { id: number; purchase_date: string; total_amount: string; status: string; source_channel: string; customer_channel: string; items: RawItem[] }
-
-    const adjustedPurchases = (purchases.rows as RawPurchase[]).map((p) => {
-      const items = p.items || []
-      const itemsSum = items.reduce((s, i) => s + Number(i.total_price), 0)
-      const purchaseTotal = Number(p.total_amount)
-      if (items.length > 0 && itemsSum > 0 && Math.abs(itemsSum - purchaseTotal) > 0.01) {
-        const ratio = purchaseTotal / itemsSum
-        return {
-          ...p,
-          items: items.map((item) => ({
-            ...item,
-            unit_price:  (Number(item.unit_price)  * ratio).toFixed(2),
-            total_price: (Number(item.total_price) * ratio).toFixed(2),
-          })),
-        }
-      }
-      return p
-    })
-
     const aggRow = agg.rows[0]
 
     return NextResponse.json({
@@ -286,7 +261,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       emails,
       phones,
       addresses,
-      purchases: adjustedPurchases,
+      purchases: purchases.rows,
     })
   } catch (err) {
     console.error(err)
