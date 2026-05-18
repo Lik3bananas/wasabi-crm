@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
     "jose": "^6.2.3",
     "next": "16.2.6",
