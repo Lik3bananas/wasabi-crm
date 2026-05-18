@@ -146,18 +146,36 @@ function normalizeName(n) {
 
 // ── Clientes ──────────────────────────────────────────────────────────────────
 
+function normalizeCpf(doc) {
+  if (!doc) return null
+  const digits = doc.replace(/\D/g, '')
+  // CPF = 11 digits; CNPJ = 14 digits — only save CPFs
+  return digits.length === 11 ? digits : null
+}
+
 async function findOrCreateCustomer(client, c) {
   const email = c.email?.toLowerCase().trim() || null
   const phone = normalizePhone(c.telefone1 || c.telefone2 || '') || null
   const name  = normalizeName(c.nome) || 'Desconhecido'
   const city  = c.cidade || null
   const state = c.uf    || null
+  const cpf   = normalizeCpf(c.doc1 || '')
 
   if (email) {
     const r = await client.query(
       `SELECT id FROM customers WHERE LOWER(email) = $1 LIMIT 1`, [email]
     )
-    if (r.rows.length) return r.rows[0].id
+    if (r.rows.length) {
+      // Backfill CPF if we now have it and the record doesn't
+      if (cpf) {
+        await client.query(
+          `UPDATE customers SET cpf_encrypted = $1, updated_at = NOW()
+           WHERE id = $2 AND cpf_encrypted IS NULL`,
+          [cpf, r.rows[0].id]
+        )
+      }
+      return r.rows[0].id
+    }
   }
 
   if (phone && phone.length >= 8) {
@@ -166,16 +184,25 @@ async function findOrCreateCustomer(client, c) {
        WHERE REGEXP_REPLACE(COALESCE(phone,''), '[^0-9]', '', 'g') = $1 LIMIT 1`,
       [phone]
     )
-    if (r.rows.length) return r.rows[0].id
+    if (r.rows.length) {
+      if (cpf) {
+        await client.query(
+          `UPDATE customers SET cpf_encrypted = $1, updated_at = NOW()
+           WHERE id = $2 AND cpf_encrypted IS NULL`,
+          [cpf, r.rows[0].id]
+        )
+      }
+      return r.rows[0].id
+    }
   }
 
   const ins = await client.query(
     `INSERT INTO customers
-       (full_name, email, phone, source_channel, address_city, address_state,
+       (full_name, email, phone, cpf_encrypted, source_channel, address_city, address_state,
         total_spent, purchase_count, is_active, created_at, updated_at)
-     VALUES ($1,$2,$3,'wbuy',$4,$5,0,0,true,NOW(),NOW())
+     VALUES ($1,$2,$3,$4,'wbuy',$5,$6,0,0,true,NOW(),NOW())
      RETURNING id`,
-    [name, email, phone, city, state]
+    [name, email, phone, cpf, city, state]
   )
   return ins.rows[0].id
 }
