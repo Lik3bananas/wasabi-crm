@@ -30,7 +30,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       `SELECT id, full_name, email, phone, source_channel, total_spent, purchase_count,
               address_street, address_number, address_complement,
               address_city, address_state, address_zipcode,
-              first_purchase_date, last_purchase_date, is_active, created_at
+              first_purchase_date, last_purchase_date, is_active, created_at,
+              cpf_encrypted
        FROM customers WHERE id = $1`,
       [id]
     )
