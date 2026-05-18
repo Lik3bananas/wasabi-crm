@@ -1,10 +1,6 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-} from 'recharts'
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Metrics {
   total_customers:  number
@@ -20,8 +16,7 @@ interface Metrics {
   total_units:         number
 }
 
-interface MonthlySale { month: string; orders: number; revenue: string }
-interface TopState     { state: string; total: number }
+interface TopState { state: string; total: number }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmt(val: string | number) {
@@ -30,12 +25,6 @@ function fmt(val: string | number) {
 
 function toISO(d: Date) {
   return d.toISOString().slice(0, 10)
-}
-
-function fmtBR(iso: string) {
-  if (!iso) return ''
-  const [y, m, d] = iso.split('-')
-  return `${d}/${m}/${y}`
 }
 
 // ─── MetricCard ───────────────────────────────────────────────────────────────
@@ -51,13 +40,10 @@ function MetricCard({ label, value, sub }: { label: string; value: string | numb
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
-  const [data, setData]       = useState<{ metrics: Metrics; monthlySales: MonthlySale[]; topCities: TopState[] } | null>(null)
+  const [data, setData]       = useState<{ metrics: Metrics; topCities: TopState[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo,   setDateTo]   = useState('')
-  // Track the applied range to show in the chart subtitle
-  const [appliedFrom, setAppliedFrom] = useState('')
-  const [appliedTo,   setAppliedTo]   = useState('')
 
   const fetchData = useCallback((from: string, to: string) => {
     setLoading(true)
@@ -78,34 +64,18 @@ export default function DashboardPage() {
     const to   = toISO(now)
     setDateFrom(from)
     setDateTo(to)
-    setAppliedFrom(from)
-    setAppliedTo(to)
     fetchData(from, to)
   }, [fetchData])
 
   function applyFilter() {
-    setAppliedFrom(dateFrom)
-    setAppliedTo(dateTo)
     fetchData(dateFrom, dateTo)
   }
 
   function clearFilter() {
     setDateFrom('')
     setDateTo('')
-    setAppliedFrom('')
-    setAppliedTo('')
     fetchData('', '')
   }
-
-  const chartSubtitle = appliedFrom && appliedTo
-    ? `${fmtBR(appliedFrom)} – ${fmtBR(appliedTo)}`
-    : 'Todo o período'
-
-  const chartData = (data?.monthlySales ?? []).map((m) => ({
-    mes:     m.month.slice(5) + '/' + m.month.slice(2, 4),
-    Receita: Number(m.revenue),
-    Pedidos: m.orders,
-  }))
 
   return (
     <div>
@@ -144,7 +114,7 @@ export default function DashboardPage() {
           >
             Aplicar
           </button>
-          {(appliedFrom || appliedTo) && (
+          {(dateFrom || dateTo) && (
             <button
               onClick={clearFilter}
               className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
@@ -197,35 +167,13 @@ export default function DashboardPage() {
             />
           </div>
 
-          {/* Chart + sidebar */}
+          {/* Sidebar */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-            {/* Revenue chart */}
-            <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-              <h2 className="text-sm font-semibold text-gray-700 mb-1">Receita por Período</h2>
-              <p className="text-xs text-gray-400 mb-4">{chartSubtitle}</p>
-              {chartData.length === 0 ? (
-                <div className="flex items-center justify-center h-[220px] text-gray-400 text-sm">
-                  Nenhum dado para o período selecionado
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
-                    <Tooltip formatter={(v) => fmt(Number(v))} />
-                    <Bar dataKey="Receita" fill="#16a34a" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-
-            {/* Sidebar */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
               <h2 className="text-sm font-semibold text-gray-700 mb-4">Canal de Origem</h2>
               <div className="space-y-3">
                 {[
-                  { label: 'PDV',   count: data.metrics.pdv_orders,  color: 'bg-green-600' },
+                  { label: 'Loja Física', count: data.metrics.pdv_orders, color: 'bg-green-600' },
                   { label: 'wBuy',  count: data.metrics.wbuy_orders,  color: 'bg-green-400' },
                   { label: 'Wix',   count: data.metrics.wix_orders,   color: 'bg-green-200' },
                 ].map(({ label, count, color }) => (

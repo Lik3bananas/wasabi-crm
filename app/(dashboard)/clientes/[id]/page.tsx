@@ -66,8 +66,8 @@ const statusLabel: Record<string, string> = {
 
 function channelLabel(ch: string) {
   if (ch === 'wbuy') return 'wBuy'
-  if (ch === 'pdvnet') return 'PDVNet'
-  if (ch === 'legacy' || ch === 'legacy_spreadsheet') return 'Planilha'
+  if (ch === 'pdvnet') return 'Loja Física'
+  if (ch === 'legacy' || ch === 'legacy_spreadsheet') return 'Wix'
   return 'Wix'
 }
 function channelClass(ch: string) {

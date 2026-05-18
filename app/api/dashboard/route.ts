@@ -83,20 +83,25 @@ export async function GET(req: NextRequest) {
         JOIN purchase_items pi ON pi.purchase_id = pu.id
         WHERE ${revenueWhereAliased}
       `, periodParams),
-      // Top states — global customer base, not period-sensitive
+      // Top states — all channels, period-filtered
+      // PDV orders always count as RJ; wBuy/Wix use real customer address_state
       pool.query(`
         SELECT
-          TRIM(SPLIT_PART(address_state, '|', 1)) AS state,
+          CASE
+            WHEN pu.source_channel = 'pdvnet' THEN 'RJ'
+            ELSE REGEXP_REPLACE(TRIM(SPLIT_PART(c.address_state, '|', 1)), '^BR-', '')
+          END AS state,
           COUNT(*)::int AS total
-        FROM customers
-        WHERE address_state IS NOT NULL
-          AND TRIM(address_state) != ''
-          AND total_spent > 0
-          AND (source_channel != 'pdvnet' OR cpf_encrypted IS NOT NULL)
-        GROUP BY TRIM(SPLIT_PART(address_state, '|', 1))
+        FROM purchases pu
+        LEFT JOIN customers c ON c.id = pu.customer_id
+        WHERE ${revenueWhereAliased}
+        GROUP BY CASE
+          WHEN pu.source_channel = 'pdvnet' THEN 'RJ'
+          ELSE REGEXP_REPLACE(TRIM(SPLIT_PART(c.address_state, '|', 1)), '^BR-', '')
+        END
         ORDER BY total DESC
         LIMIT 10
-      `),
+      `, periodParams),
     ])
 
     return NextResponse.json({

@@ -440,8 +440,8 @@ function ClientesContent() {
                         : 'bg-purple-100 text-purple-700'
                       }`}>
                         {c.source_channel === 'wbuy' ? 'wBuy'
-                          : c.source_channel === 'pdvnet' ? 'PDVNet'
-                          : c.source_channel === 'legacy' || c.source_channel === 'legacy_spreadsheet' ? 'Planilha'
+                          : c.source_channel === 'pdvnet' ? 'Loja Física'
+                          : c.source_channel === 'legacy' || c.source_channel === 'legacy_spreadsheet' ? 'Wix'
                           : 'Wix'}
                       </span>
                     </td>

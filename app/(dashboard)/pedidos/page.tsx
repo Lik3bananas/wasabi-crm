@@ -211,8 +211,8 @@ function PedidosContent() {
                             : 'bg-purple-100 text-purple-700'
                           }`}>
                             {p.source_channel === 'wbuy' ? 'wBuy'
-                              : p.source_channel === 'pdvnet' ? 'PDVNet'
-                              : p.source_channel === 'legacy' || p.source_channel === 'legacy_spreadsheet' ? 'Planilha'
+                              : p.source_channel === 'pdvnet' ? 'Loja Física'
+                              : p.source_channel === 'legacy' || p.source_channel === 'legacy_spreadsheet' ? 'Wix'
                               : 'Wix'}
                           </span>
                         </td>
