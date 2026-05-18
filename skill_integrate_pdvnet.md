@@ -1,413 +1,466 @@
 # SKILL: Integração PDVNet (Loja Física) → Wasabi CRM Database
 
 **Nome:** skill_integrate_pdvnet  
-**Versão:** 2.0  
+**Versão:** 3.0  
 **Tipo:** Importação Histórica + Sync Diário Automático  
-**Frequência:** Sync automático diário às 12h (`skill_sync_pdvnet_daily.py`)  
-**Status:** ✅ Concluído — 15.220 vendas importadas (Jan/2019 → Mai/2026)  
-**Fase:** 3 de 3
+**Status:** ✅ Operacional — 15.220 vendas importadas (Jan/2019 → Mai/2026)
 
-> ⚠️ **LEIA ANTES DE MODIFICAR:** Este script possui filtro crítico de deduplicação.
-> O PDVNet contém TANTO vendas físicas QUANTO vendas do site (wBuy/Wix).
-> Importar sem filtro gera duplicatas. Ver seção **Deduplicação** abaixo e arquivo
-> `PDVNET_DEDUPLICATION_ANALYSIS.md` para análise completa com evidências.
+> ⚠️ **REGRA CRÍTICA DE DEDUPLICAÇÃO — LEIA PRIMEIRO:**  
+> O PDVNet registra TANTO vendas físicas QUANTO vendas do site (espelho wBuy).  
+> `LojaId=8` e `TipoVenda=7` = site — **SEMPRE filtrar, nunca importar**.  
+> Evidências em `PDVNET_DEDUPLICATION_ANALYSIS.md`.
 
 ---
 
-## O que faz
+## Localização dos Scripts
 
-Sincroniza vendas e clientes da **loja física Wasabi** (sistema PDVNet) com a base de dados central do CRM.
+Todos os arquivos ficam em `C:\Users\Usuario\Desktop\Nova pasta (3)\`:
+
+| Arquivo | Função |
+|---------|--------|
+| `skill_integrate_pdvnet.py` | Importação pontual por período (histórica) |
+| `skill_sync_pdvnet_daily.py` | **Sync diário automático** — roda 3x/dia (06h, 12h, 18h) |
+| `pdvnet_importar_historico.py` | Importação bulk histórica com cache persistente |
+| `wasabi_CREDENTIALS.env` | Credenciais DB + PDVNet |
+| `pdvnet_sync.log` | Log do sync diário |
+| `PDVNET_DEDUPLICATION_ANALYSIS.md` | Análise das 1.500 vendas que confirmou o filtro LojaId=8 |
+
+---
+
+## Credenciais e Acesso
+
+### PDVNet API
 
 ```
-PDVNet (Loja Física)
-   └─ GET /api/public/vendas?inicio=...&fim=...
-   └─ GET /api/public/clientes/{id}
-          ↓
-   Deduplicação: CPF → Email → Telefone
-          ↓
-   PostgreSQL (Wasabi CRM Database)
-   └─ customers  (perfil unificado)
-   └─ purchases  (histórico de vendas)
-   └─ purchase_items (itens de cada venda)
+URL Base:   http://wasabi.pdvnet.com.br/pdvapi
+Docs:       http://wasabi.pdvnet.com.br/pdvapi/help
+Framework:  ASP.NET Web API (REST/JSON)
+
+Usuario:    Re Veras
+Senha:      8170
+```
+
+### Banco de Dados (PostgreSQL RDS)
+
+```
+Host:       crm-postgres-prod.crcwscya20vj.us-east-2.rds.amazonaws.com
+Port:       5432
+Database:   crm_wasabi
+User:       postgres
+Password:   Crm2026Seg123Admin
+SSL:        rejectUnauthorized=false
+```
+
+Arquivo completo: `wasabi_CREDENTIALS.env`
+
+---
+
+## Autenticação PDVNet
+
+### Request
+
+```http
+POST http://wasabi.pdvnet.com.br/pdvapi/api/public/login
+Content-Type: application/json
+
+{"Usuario": "Re Veras", "Senha": "8170"}
+```
+
+### Response (campo lido pelo script)
+
+```python
+token = resp.json().get('Token')   # ← campo exato na resposta
+```
+
+O token é lido diretamente do campo `Token` do JSON. Exemplo de resposta:
+```json
+{"Token": "eyJ0eXAiOiJKV1Q...", "Sucesso": true}
+```
+
+### Header para todas as chamadas subsequentes
+
+```http
+Authorization: Bearer eyJ0eXAiOiJKV1Q...
 ```
 
 ---
 
-## Status das Fases do Projeto
+## Endpoints da API
 
-| Fase | Fonte | Status | Clientes | Pedidos |
-|------|-------|--------|----------|---------|
-| 1 | Excel Legado | ✅ Completo | 1.286 | 1.528 |
-| 2 | wBuy API (site) | ⚠️ Parcial | ~531 | ~889 |
-| 3 | PDVNet (loja física) | ✅ Concluído | 8.646 | 15.220 |
+### Vendas (paginado)
 
----
-
-## API PDVNet — O que foi mapeado
-
-**Base URL:** `http://wasabi.pdvnet.com.br/pdvapi`  
-**Docs:** `http://wasabi.pdvnet.com.br/pdvapi/help`  
-**Framework:** ASP.NET Web API (REST/JSON)
-
-### Autenticação
-
-```
-POST /api/public/login
-Body: {"Usuario": "...", "Senha": "..."}
-Resposta: {"Sucesso": true, "Mensagem": "TOKEN_AQUI", "Erro": null}
+```http
+GET /api/public/vendas?inicio=YYYY-MM-DD&fim=YYYY-MM-DD&pagina=1&tamanhoPagina=50
+Authorization: Bearer TOKEN
 ```
 
-Todos os endpoints subsequentes usam:
+> ⚠️ **`tamanhoPagina` máximo é 50.** Valores acima causam HTTP 500. Usar sempre `tamanhoPagina=50`.
+
+Resposta:
+```json
+{
+  "Sucesso": true,
+  "Total": 1247,
+  "Paginas": 25,
+  "Dados": [
+    {
+      "Id": 41741,
+      "DataVenda": "2026-05-18T14:30:00",
+      "ValorTotal": 350.00,
+      "Inativa": false,
+      "LojaId": 7,
+      "TipoVenda": 65,
+      "ClienteId": 12345,
+      "ClienteCPF": "123.456.789-00",
+      "ClienteNome": "MARIA SILVA",
+      "Itens": [
+        {
+          "VariacaoId": 9901,
+          "NomeProduto": "VESTIDO ESCADA INCERTI",
+          "SKU": "VEST-001",
+          "Quantidade": 1,
+          "Preco": 399.00,
+          "ValorDesconto": 49.00
+        }
+      ]
+    }
+  ]
+}
 ```
-Authorization: Bearer TOKEN_AQUI
+
+**Campos críticos da venda:**
+
+| Campo API | Significado | Mapeamento DB |
+|-----------|-------------|---------------|
+| `Id` | ID único da venda no PDVNet | `purchases.external_id` |
+| `DataVenda` | Data/hora da venda | `purchases.purchase_date` |
+| `ValorTotal` | **Total pago pelo cliente** (pode ser 0 em trocas) | `purchases.total_amount` |
+| `Inativa` | `true` = venda cancelada | `purchases.status` → `cancelled` / `completed` |
+| `LojaId` | 2, 4, 7 = loja física; **8 = site (filtrar!)** | — |
+| `TipoVenda` | 65 = normal; 2 = troca; **7 = site (filtrar!)** | — |
+| `ClienteId` | ID do cliente no PDVNet | para busca em `/api/public/clientes/{id}` |
+| `ClienteCPF` | CPF do cliente | deduplicação |
+
+**Campos críticos do item (`Itens[]`):**
+
+| Campo API | Significado | Mapeamento DB |
+|-----------|-------------|---------------|
+| `VariacaoId` | ID da variação do produto | referência PDVNet |
+| `NomeProduto` | Nome do produto | `purchase_items.product_name` |
+| `SKU` | Código SKU | `purchase_items.product_sku` |
+| `Quantidade` | Quantidade | `purchase_items.quantity` |
+| `Preco` | **Preço cheio de varejo** (sem desconto aplicado) | `purchase_items.unit_price` |
+| `ValorDesconto` | Desconto do item | `purchase_items.discount` |
+
+> ℹ️ **Nota sobre preços:** `Preco` é o preço cheio. O valor realmente pago é `Preco - ValorDesconto`.  
+> A UI do CRM exibe: Subtotal / Desconto / Total pago (não escala os preços dos itens).
+
+### Cliente por ID
+
+```http
+GET /api/public/clientes/{ClienteId}
+Authorization: Bearer TOKEN
 ```
 
-### Endpoints usados pela skill
+Campos usados: `Nome`, `CPFCNPJ` (11 dígitos = CPF; 14 = CNPJ, ignorar para dedup),
+`Email`, `Celular`, `Telefone`, `TelefoneComercial`,
+`Enderecos[0].Rua`, `Enderecos[0].CEP`, `Enderecos[0].Cidade`, `Enderecos[0].UF`
 
-| Endpoint | Uso |
-|----------|-----|
-| `POST /api/public/login` | Autenticação |
-| `GET /api/public/vendas?inicio=&fim=&pagina=&tamanhoPagina=` | Vendas por período |
-| `GET /api/public/clientes/{id}` | Dados do cliente |
-| `GET /api/public/clientes?cgc=&telefone=` | Buscar cliente por CPF/telefone |
-
-### Outros endpoints disponíveis (não usados nesta skill)
+### Outros endpoints disponíveis (não usados no sync)
 
 | Endpoint | Descrição |
 |----------|-----------|
 | `GET /api/public/clientes` | Listar clientes (paginado) |
-| `GET /api/public/vendedores` | Vendedores |
 | `GET /api/public/lojas` | Lojas/filiais |
-| `GET /api/public/estoque/variacao` | Estoque por produto |
+| `GET /api/public/vendedores` | Vendedores |
+| `GET /api/public/variacoes/{id}` | Variação de produto específica |
+| `GET /api/public/estoque/variacao` | Estoque |
 | `GET /api/public/precos/{tabelaId}` | Tabela de preços |
-| `GET /api/public/variacoes` | Variações de produto |
-| `GET /api/public/produtos/{redeId}` | Catálogo de produtos |
-| `GET /api/public/bonus/cliente/{id}` | Programa de pontos/bônus |
+| `GET /api/public/bonus/cliente/{id}` | Pontos/bônus do cliente |
 
 ---
 
-## Dados do Cliente PDVNet
+## Lógica dos Scripts
 
-Campos mapeados da API para o CRM:
+### `skill_integrate_pdvnet.py` — Importação Histórica
 
-```
-PDVNet             →   CRM
-──────────────────────────────────────────
-Nome               →   customers.full_name
-CPFCNPJ (11 dígitos) → customers.cpf_encrypted
-Email              →   customer_emails
-Celular            →   customer_phones (tipo: celular)
-Telefone           →   customer_phones (tipo: fixo)
-TelefoneComercial  →   customer_phones (tipo: comercial)
-Enderecos[0].Rua   →   customer_addresses.street
-Enderecos[0].CEP   →   customer_addresses.zipcode
-Enderecos[0].Cidade→   customer_addresses.city
-Enderecos[0].UF    →   customer_addresses.state
-LojaId             →   ignorado (todas as vendas vão para source_channel='pdvnet')
-```
-
-**Campos disponíveis mas não mapeados ainda:**
-- `DataNascimento` → pode ser salvo em `customers.date_of_birth`
-- `Sexo` → para segmentação futura
-- `ClassificacaoId` → classificação de cliente no PDVNet
-- `Inativo` → sincronizar `customers.is_active`
-
----
-
-## Dados da Venda PDVNet
-
-```
-PDVNet                  →   CRM
-────────────────────────────────────────────────
-Id                      →   purchases.external_id
-DataVenda / DataEmissao →   purchases.purchase_date
-TotalVenda / ValorTotal →   purchases.total_amount
-Status                  →   purchases.status (completed/cancelled)
-IdCliente               →   purchases.customer_id (via deduplicação)
-'pdvnet'                →   purchases.source_channel
-'pdvnet_api'            →   purchases.imported_from
-
-Itens[]:
-  Descricao / NomeProduto → purchase_items.product_name
-  Codigo / SKU            → purchase_items.product_sku
-  Tamanho / Grade         → purchase_items.product_size
-  Quantidade              → purchase_items.quantity
-  PrecoUnitario           → purchase_items.unit_price
-  PrecoTotal              → purchase_items.total_price
-  Desconto                → purchase_items.discount
-```
-
----
-
-## Vantagem sobre o wBuy: Paginação Real
-
-O PDVNet suporta paginação verdadeira via `?pagina=N&tamanhoPagina=N`:
+Função principal `inserir_venda()`:
 
 ```python
-# Fase 2 (wBuy) — LIMITAÇÃO: max 100 itens, sem paginação
-GET /customer?limit=100  →  sempre os mesmos 100 clientes
-
-# Fase 3 (PDVNet) — SEM LIMITAÇÃO: paginação real
-GET /vendas?inicio=2024-01-01&fim=2024-12-31&pagina=1&tamanhoPagina=100
-GET /vendas?inicio=2024-01-01&fim=2024-12-31&pagina=2&tamanhoPagina=100
-GET /vendas?inicio=2024-01-01&fim=2024-12-31&pagina=3&tamanhoPagina=100
-# ... até esgotar todas as páginas
-```
-
-Isso significa que o PDVNet importa **100% das vendas**, sem restrição.
-
----
-
-## Como usar
-
-### 1. Configurar credenciais
-
-Adicionar ao arquivo `wasabi_CREDENTIALS.env`:
-
-```env
-# PDVNet — Loja Física
-PDVNET_BASE_URL=http://wasabi.pdvnet.com.br/pdvapi
-PDVNET_USUARIO=seu_usuario_aqui
-PDVNET_SENHA=sua_senha_aqui
-```
-
-### 2. Executar
-
-```bash
-# Instalação de dependências (uma vez)
-pip install psycopg2-binary requests python-dotenv
-
-# Sync incremental (desde última venda importada)
-python skill_integrate_pdvnet.py
-
-# Ver o que seria importado (sem inserir)
-python skill_integrate_pdvnet.py --dry-run
-
-# Importar histórico desde data específica
-python skill_integrate_pdvnet.py --desde 2024-01-01
-
-# Reimportar tudo
-python skill_integrate_pdvnet.py --full
-```
-
-### 3. Verificar resultado
-
-```sql
--- Total de vendas PDVNet importadas
-SELECT COUNT(*) FROM purchases WHERE source_channel = 'pdvnet';
-
--- Clientes que compraram na loja física
-SELECT COUNT(DISTINCT customer_id) FROM purchases WHERE source_channel = 'pdvnet';
-
--- Últimas vendas importadas
-SELECT p.purchase_date, p.total_amount, c.full_name
-FROM purchases p
-JOIN customers c ON c.id = p.customer_id
-WHERE p.source_channel = 'pdvnet'
-ORDER BY p.purchase_date DESC
-LIMIT 10;
-
--- Clientes que compraram em AMBOS os canais (site + loja física)
-SELECT c.full_name, c.email,
-       SUM(p.total_amount) as total_gasto,
-       COUNT(*) as total_compras
-FROM customers c
-JOIN purchases p ON p.customer_id = c.id
-GROUP BY c.id, c.full_name, c.email
-HAVING COUNT(DISTINCT p.source_channel) > 1
-ORDER BY total_gasto DESC;
-```
-
----
-
-## Deduplicação: PDVNet vs Site (wBuy/Wix)
-
-> Análise completa com evidências em: `PDVNET_DEDUPLICATION_ANALYSIS.md`
-
-### O problema
-O PDVNet registra vendas de **todas** as origens — loja física E site. Se importarmos tudo, cada venda do site seria contada duas vezes (uma vez pelo wBuy, uma vez pelo PDVNet).
-
-### A solução: filtro por LojaId + TipoVenda
-
-Análise de 1.500 vendas (2025) revelou padrão inequívoco:
-
-| LojaId | TipoSistemaOrigem | TipoVenda | É site? |
-|--------|-------------------|-----------|---------|
-| 8 | 100% = 1 | 99% = 7 | **SIM — ignorar** |
-| 2, 4, 7 | 99% = 2 | 65 (normal) | Não — importar |
-
-**Regra implementada no script:**
-```python
-# Venda do site = IGNORADA (já está no wBuy)
+# 1. Filtro de site (CRÍTICO — nunca remover)
 if venda.get('LojaId') == 8 or venda.get('TipoVenda') == 7:
-    continue
+    continue  # é espelho wBuy, já está no banco via sync wBuy
+
+# 2. Valores lidos do API
+total   = float(venda.get('ValorTotal', 0))   # pode ser 0.0 em trocas
+inativa = venda.get('Inativa', False)
+status  = 'cancelled' if inativa else 'completed'
+
+# 3. Itens
+preco_unit = float(item.get('Preco', 0))         # preço cheio
+desconto   = float(item.get('ValorDesconto', 0)) # desconto do item
+preco_tot  = qtd * preco_unit                    # total sem desconto
+
+# 4. external_id codifica a loja
+# Formato: "{LojaId:03d}{Id}"  ex: Loja 7 + Id 1741 → "0071741"
+# Prefixo "008..." nunca deve aparecer no banco
+
+# 5. Atualização de cliente — INCREMENTAL (ver problema conhecido abaixo)
+UPDATE customers SET
+    purchase_count = purchase_count + 1,
+    total_spent    = total_spent + %s,   # NUNCA decrementa em cancelamento
+    ...
 ```
 
-### Por que não cruzamos por CPF+Data+Valor
-A importação do wBuy (Fase 2) não gravou CPF dos clientes — a API wBuy não retorna esse campo. Portanto, cruzar por `CPF + data + valor` retornou 0 matches. O filtro por `LojaId=8` é o único método confiável.
+**Deduplicação de clientes:** CPF → Email → Telefone → Cria novo
 
-### Como verificar se há contaminação no futuro
+### `skill_sync_pdvnet_daily.py` — Sync Diário
+
+- **Tabela de controle:** `pdvnet_sync_control` — guarda timestamp do último sync bem-sucedido
+- **Tabela de log:** `pdvnet_sync_log` — auditoria de cada execução
+- **Retry:** 3 tentativas, backoff exponencial (2s, 4s, 8s)
+- **Janela padrão:** busca desde o último timestamp até agora
+- **Comportamento:** só processa pedidos NOVOS — se `external_id` já existe, pula
+- **Modos:**
+  ```bash
+  python skill_sync_pdvnet_daily.py              # sync normal
+  python skill_sync_pdvnet_daily.py --dry-run    # simula sem gravar
+  python skill_sync_pdvnet_daily.py --desde 2026-05-01  # janela manual
+  ```
+
+**Agendamento atual (Windows Task Scheduler):**
+```
+Horários: 06:00, 12:00, 18:00 (3x por dia)
+Log:      C:\Users\Usuario\Desktop\Nova pasta (3)\pdvnet_sync.log
+```
+
+---
+
+## Deduplicação de Lojas (Regra Crítica)
+
+O PDVNet tem 4 lojas registradas:
+
+| LojaId | Tipo | Ação |
+|--------|------|------|
+| 2 | Loja física | ✅ Importar |
+| 4 | Loja física | ✅ Importar |
+| 7 | Loja física (principal) | ✅ Importar |
+| **8** | **Site (espelho wBuy)** | **❌ Filtrar — já está no banco** |
+
+`TipoVenda=7` também indica origem site — filtrado em conjunto.
+
+**Como verificar integridade:**
 ```sql
--- IDs da Loja 8 começam com "008..." — NÃO devem aparecer após importação correta
-SELECT LEFT(external_id, 3) as loja, COUNT(*)
+-- Prefixo "008" = Loja 8 = site. NUNCA deve aparecer após importação correta.
+SELECT LEFT(external_id, 3) AS loja_prefix, COUNT(*)
 FROM purchases WHERE source_channel = 'pdvnet'
 GROUP BY LEFT(external_id, 3);
--- Se "008" aparecer: erro de filtro
+-- Esperado: "007", "002", "004" apenas.
+```
+
+---
+
+## Problemas Conhecidos (Dados Atuais)
+
+### 1. ValorTotal=0 em Trocas (332 pedidos)
+
+**Causa:** PDVNet retorna `ValorTotal=0` para pedidos do tipo `TipoVenda=2` (trocas/exchanges).  
+Os itens têm preços corretos (`Preco` preenchido), mas o total da venda é zero porque é uma troca — não houve pagamento líquido.
+
+```sql
+-- Verificar: pedidos PDVNet com total_amount = 0
+SELECT COUNT(*) FROM purchases WHERE source_channel = 'pdvnet' AND total_amount = 0;
+-- Resultado atual: 332 pedidos
+
+-- Todos vêm da Loja 7 (física, não site)
+SELECT LEFT(external_id, 3) AS loja, COUNT(*)
+FROM purchases WHERE source_channel = 'pdvnet' AND total_amount = 0
+GROUP BY LEFT(external_id, 3);
+```
+
+**Status:** Aguardando confirmação do cliente se são realmente trocas intencionais com ValorTotal=0, ou se é bug no PDVNet.  
+**Não corrigir automaticamente** — zeros são dados corretos da API.
+
+### 2. total_spent Inflado para 275 Clientes (~R$785k)
+
+**Causa:** `inserir_venda()` usa atualização incremental `total_spent = total_spent + valor`.  
+Quando um pedido é cancelado (`Inativa=True`), o sync pula o pedido (já existe → `continue`).  
+Como nunca há subtração, o `total_spent` nunca é decrementado para cancelamentos.
+
+```sql
+-- Verificar divergência: total_spent calculado vs armazenado
+SELECT
+    c.id,
+    c.full_name,
+    c.total_spent AS armazenado,
+    COALESCE(SUM(CASE WHEN p.status='completed' THEN p.total_amount ELSE 0 END), 0) AS calculado,
+    c.total_spent - COALESCE(SUM(CASE WHEN p.status='completed' THEN p.total_amount ELSE 0 END), 0) AS inflacao
+FROM customers c
+LEFT JOIN purchases p ON p.customer_id = c.id AND p.source_channel = 'pdvnet'
+WHERE c.source_channel = 'pdvnet'
+GROUP BY c.id, c.full_name, c.total_spent
+HAVING c.total_spent > COALESCE(SUM(CASE WHEN p.status='completed' THEN p.total_amount ELSE 0 END), 0) + 1
+ORDER BY inflacao DESC;
+```
+
+**Fix conhecido (ainda não executado):**
+```sql
+UPDATE customers c
+SET total_spent = sub.real_total,
+    purchase_count = sub.real_count,
+    updated_at = NOW()
+FROM (
+    SELECT customer_id,
+           COALESCE(SUM(CASE WHEN status='completed' THEN total_amount ELSE 0 END), 0) AS real_total,
+           COUNT(CASE WHEN status='completed' THEN 1 END) AS real_count
+    FROM purchases WHERE source_channel = 'pdvnet'
+    GROUP BY customer_id
+) sub
+WHERE c.id = sub.customer_id
+  AND c.source_channel = 'pdvnet';
+```
+
+---
+
+## Mapeamento API → Banco
+
+### Tabela `purchases`
+
+| Campo API PDVNet | Campo DB | Notas |
+|-----------------|----------|-------|
+| `Id` | `external_id` | prefixado com LojaId (ex: "071{Id}") |
+| `DataVenda` | `purchase_date` | |
+| `ValorTotal` | `total_amount` | pode ser 0 em trocas |
+| `Inativa=false` | `status = 'completed'` | |
+| `Inativa=true` | `status = 'cancelled'` | |
+| (fixo) | `source_channel = 'pdvnet'` | |
+| (fixo) | `imported_from = 'pdvnet_api'` | |
+
+### Tabela `purchase_items`
+
+| Campo API PDVNet | Campo DB | Notas |
+|-----------------|----------|-------|
+| `NomeProduto` | `product_name` | |
+| `SKU` | `product_sku` | |
+| `Quantidade` | `quantity` | |
+| `Preco` | `unit_price` | preço cheio, sem desconto |
+| `Preco * Quantidade` | `total_price` | calculado no script |
+| `ValorDesconto` | `discount` | desconto do item |
+
+### Tabela `customers`
+
+| Campo API PDVNet | Campo DB | Notas |
+|-----------------|----------|-------|
+| `ClienteNome` ou `Nome` | `full_name` | title case aplicado |
+| `CPFCNPJ` (11d) | `cpf_encrypted` | 14d (CNPJ) ignorado para dedup |
+| `Email` | `email` | lowercase |
+| `Celular` | `phone` | preferencial |
+| `Enderecos[0].Cidade` | `address_city` | |
+| `Enderecos[0].UF` | `address_state` | |
+| `Enderecos[0].Rua` | `address_street` | |
+| `Enderecos[0].CEP` | `address_zipcode` | |
+| (fixo) | `source_channel = 'pdvnet'` | |
+
+---
+
+## Consultas de Monitoramento
+
+```sql
+-- Volume geral
+SELECT COUNT(*) FROM purchases WHERE source_channel = 'pdvnet';
+
+-- Volume por status
+SELECT status, COUNT(*), SUM(total_amount)
+FROM purchases WHERE source_channel = 'pdvnet'
+GROUP BY status;
+
+-- Últimas vendas importadas
+SELECT p.purchase_date, p.total_amount, p.status, c.full_name
+FROM purchases p JOIN customers c ON c.id = p.customer_id
+WHERE p.source_channel = 'pdvnet'
+ORDER BY p.purchase_date DESC LIMIT 10;
+
+-- Último sync bem-sucedido
+SELECT * FROM pdvnet_sync_control ORDER BY updated_at DESC LIMIT 1;
+
+-- Histórico de execuções do sync
+SELECT * FROM pdvnet_sync_log ORDER BY created_at DESC LIMIT 20;
+
+-- Verificar contaminação de site (não deve retornar "008")
+SELECT LEFT(external_id, 3) AS loja_prefix, COUNT(*)
+FROM purchases WHERE source_channel = 'pdvnet'
+GROUP BY LEFT(external_id, 3) ORDER BY 2 DESC;
 ```
 
 ---
 
 ## Fluxo de Deduplicação de Clientes
 
-Quando uma venda do PDVNet chega com dados do cliente:
-
 ```
 1. Tem CPF (11 dígitos)?
-   ├── SIM → Busca em customers.cpf_encrypted
-   │         ├── ACHOU → Usa esse perfil ✅
-   │         └── NÃO ACHOU → Tenta email
-   └── NÃO → Tenta email
+   ├── SIM → busca customers.cpf_encrypted
+   │         ├── ACHOU → usa esse perfil ✅
+   │         └── NÃO ACHOU → tenta email
+   └── NÃO (ou CNPJ 14d) → tenta email
 
 2. Tem Email?
-   ├── SIM → Busca em customer_emails + campo legado
-   │         ├── ACHOU → Usa esse perfil ✅
-   │         └── NÃO ACHOU → Tenta telefone
-   └── NÃO → Tenta telefone
+   ├── SIM → busca LOWER(customers.email)
+   │         ├── ACHOU → usa esse perfil ✅
+   │         └── NÃO ACHOU → tenta telefone
+   └── NÃO → tenta telefone
 
-3. Tem Telefone (celular/fixo/comercial)?
-   ├── SIM → Busca em customer_phones + campo legado
-   │         ├── ACHOU → Usa esse perfil ✅
-   │         └── NÃO ACHOU → Cria novo perfil
-   └── NÃO → Cria novo perfil
+3. Tem Telefone?
+   ├── SIM → busca por dígitos normalizados
+   │         ├── ACHOU → usa esse perfil ✅
+   │         └── NÃO ACHOU → cria novo perfil
+   └── NÃO → cria novo perfil
 ```
-
-**Resultado:** Cliente que comprou no site E na loja física aparece como **1 perfil** com todas as compras consolidadas.
 
 ---
 
-## Sync Incremental
+## Como Executar
 
-A skill é inteligente — na segunda execução em diante, busca apenas o que é novo:
-
-```python
-# Detecta data da última venda PDVNet já importada
-SELECT MAX(purchase_date) FROM purchases WHERE source_channel = 'pdvnet'
-# → 2025-03-15
-
-# Busca só o que é novo
-GET /api/public/vendas?inicio=2025-03-15&fim=2025-05-15
-# → apenas vendas dos últimos 2 meses
-```
-
-**Resultado:**
-- 1ª execução (full): importa todos os dados históricos (~minutos)
-- Execuções diárias: apenas vendas do dia anterior (~segundos)
-
----
-
-## Agendamento
-
-### Windows Task Scheduler
-```
-Task: "WasabiSyncPDVNet"
-Executar: python C:\Users\Usuario\Desktop\Nova pasta (3)\skill_integrate_pdvnet.py
-Agendar: Todos os dias às 03:00
-```
-
-### Linux Cron
+### Dependências
 ```bash
-# Sincronizar toda noite às 3h
-0 3 * * * /usr/bin/python3 /path/to/skill_integrate_pdvnet.py >> /var/log/pdvnet_sync.log 2>&1
+pip install psycopg2-binary requests python-dotenv
+```
+
+### Importação histórica
+```bash
+cd "C:\Users\Usuario\Desktop\Nova pasta (3)"
+
+# Dry-run primeiro
+python skill_integrate_pdvnet.py --dry-run
+
+# Importar desde data específica
+python skill_integrate_pdvnet.py --desde 2026-01-01
+
+# Importar tudo
+python skill_integrate_pdvnet.py --full
+```
+
+### Sync diário manual
+```bash
+python skill_sync_pdvnet_daily.py
+python skill_sync_pdvnet_daily.py --dry-run
 ```
 
 ---
 
-## Tratamento de Erros
+## Status do Projeto
 
-| Situação | Comportamento |
-|----------|---------------|
-| Venda sem cliente (`IdCliente` vazio) | Cria cliente "Anônimo PDVNet" |
-| Cliente não encontrado na API | Cria cliente com nome `"Cliente PDVNet #ID"` |
-| Venda já importada (`external_id` duplicado) | Pula silenciosamente |
-| Erro em venda individual | Registra erro, continua as próximas |
-| API retorna `Sucesso: false` | Para a paginação, reporta no log |
-| CNPJ no campo CPFCNPJ (14 dígitos) | Ignora para deduplicação por CPF |
+| Fase | Fonte | Status | Clientes | Pedidos |
+|------|-------|--------|----------|---------|
+| 1 | Excel Legado | ✅ Completo | 1.286 | 1.528 |
+| 2 | wBuy API (site) | ✅ Operacional | ~783 | ~783 |
+| 3 | PDVNet (loja física) | ✅ Concluído | 8.646 | 15.220 |
 
----
-
-## Monitoramento
-
-```
-============================================================
-🏪  PDVNet → Wasabi CRM  |  Integração Loja Física
-============================================================
-
-📦 Conectando ao banco de dados...
-✅ Banco conectado
-
-📅 Último sync PDVNet detectado: 2025-03-15
-📅 Período: 2025-03-15  →  2025-05-15
-
-✅ Autenticado no PDVNet
-📡 Buscando vendas PDVNet: 2025-03-15 → 2025-05-15
-   Página 1: 100 vendas
-   Página 2: 100 vendas
-   Página 3: 47 vendas
-   Total encontrado: 247 vendas
-
-⚙️  Processando 247 vendas...
-
-   [50/247] vendas processadas...
-   [100/247] vendas processadas...
-   [150/247] vendas processadas...
-   [200/247] vendas processadas...
-
-============================================================
-📊  RELATÓRIO FINAL
-============================================================
-  ✅ Vendas novas importadas:    235
-  ⏭️  Vendas já existentes:       12
-  👤 Clientes novos criados:     43
-  🔗 Clientes existentes usados: 192
-  ❌ Erros:                      0
-============================================================
-
-✅ Integração PDVNet concluída!
-```
+**Pendências de dados:**
+- [ ] Confirmar com cliente se ValorTotal=0 são trocas intencionais (332 pedidos)
+- [ ] Recalcular total_spent para os 275 clientes com valor inflado após confirmação
 
 ---
 
-## Status Final
-
-```
-✅ Fase 1: Legacy Excel importado (1.286 clientes, 1.528 pedidos)
-✅ Fase 2: wBuy API integrado (site)
-✅ Fase 3: PDVNet importado — 15.220 vendas, Jan/2019 → Mai/2026
-✅ Fase 3b: Sync diário automático configurado (skill_sync_pdvnet_daily.py)
-⏳ Fase 4: Validar clientes unificados (site + loja = mesmo perfil)
-⏳ Fase 5: Dashboard multicanal
-```
-
-## Scripts relacionados
-
-| Script | Função |
-|--------|--------|
-| `skill_integrate_pdvnet.py` | Importação pontual por período |
-| `pdvnet_importar_historico.py` | Importação bulk histórica (processo único, cache persistente) |
-| `skill_sync_pdvnet_daily.py` | **Sync diário automático** — roda às 12h, busca apenas vendas novas |
-
----
-
-## Referências
-
-- `ARCHITECTURE.md` — Schema geral do banco
-- `DEDUPLICATION.md` — Lógica completa de deduplicação
-- `skill_import_legacy.md` — Fase 1 (dados históricos)
-- `skill_integrate_website_wbuy.md` — Fase 2 (site wBuy)
-- API Docs: http://wasabi.pdvnet.com.br/pdvapi/help
-
----
-
-**Criado em:** 2026-05-15  
-**Versão:** 1.0  
-**Status:** Pronto — aguardando `PDVNET_USUARIO` e `PDVNET_SENHA`
+**Versão:** 3.0  
+**Atualizado:** 2026-05-18  
+**Status:** Operacional ✅
