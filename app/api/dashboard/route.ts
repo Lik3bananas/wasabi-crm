@@ -13,13 +13,9 @@ export async function GET(req: NextRequest) {
   // Build shared period conditions for purchase-based metrics.
   // Ghost rows (total_amount = 0) are always excluded.
   // Two variants: plain (no alias) for queries without JOIN, aliased (pu.) for JOIN queries.
-  // Subquery to restrict to CPF customers (pessoas físicas) only
-  const cpfOnly         = `customer_id IN (SELECT id FROM customers WHERE cpf_encrypted IS NOT NULL)`
-  const cpfOnlyAliased  = `pu.customer_id IN (SELECT id FROM customers WHERE cpf_encrypted IS NOT NULL)`
-
   const periodParams: unknown[] = []
-  const periodConds:        string[] = ['total_amount > 0', cpfOnly]
-  const periodCondsAliased: string[] = ['pu.total_amount > 0', cpfOnlyAliased]
+  const periodConds:        string[] = ['total_amount > 0']
+  const periodCondsAliased: string[] = ['pu.total_amount > 0']
   let idx = 1
 
   if (dateFrom) {
