@@ -402,7 +402,7 @@ function ClientesContent() {
                   </th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                     <button onClick={() => handleSort('purchase_count')} className="flex items-center ml-auto hover:text-gray-700 transition">
-                      Pedidos<SortIcon col="purchase_count" />
+                      Histórico de Compras<SortIcon col="purchase_count" />
                     </button>
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
