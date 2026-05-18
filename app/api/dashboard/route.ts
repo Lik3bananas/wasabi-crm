@@ -12,23 +12,28 @@ export async function GET(req: NextRequest) {
 
   // Build shared period conditions for purchase-based metrics.
   // Ghost rows (total_amount = 0) are always excluded.
+  // Two variants: plain (no alias) for queries without JOIN, aliased (pu.) for JOIN queries.
   const periodParams: unknown[] = []
-  const periodConds: string[]   = ['total_amount > 0']
+  const periodConds:        string[] = ['total_amount > 0']
+  const periodCondsAliased: string[] = ['pu.total_amount > 0']
   let idx = 1
 
   if (dateFrom) {
     periodConds.push(`purchase_date >= $${idx}`)
+    periodCondsAliased.push(`pu.purchase_date >= $${idx}`)
     periodParams.push(dateFrom)
     idx++
   }
   if (dateTo) {
     periodConds.push(`purchase_date < $${idx}::date + INTERVAL '1 day'`)
+    periodCondsAliased.push(`pu.purchase_date < $${idx}::date + INTERVAL '1 day'`)
     periodParams.push(dateTo)
     idx++
   }
 
   // Revenue / orders metrics also exclude cancelled
-  const revenueWhere = [...periodConds, `status != 'cancelled'`].join(' AND ')
+  const revenueWhere        = [...periodConds,        `status != 'cancelled'`].join(' AND ')
+  const revenueWhereAliased = [...periodCondsAliased, `pu.status != 'cancelled'`].join(' AND ')
 
   // Monthly chart: same filter, but default to last 12 months when no period is set
   const chartConds = [...periodConds, `status != 'cancelled'`]
@@ -38,7 +43,7 @@ export async function GET(req: NextRequest) {
   const chartWhere = chartConds.join(' AND ')
 
   try {
-    const [metrics, monthlySales, topCities] = await Promise.all([
+    const [metrics, monthlySales, topCities, itemsMetrics] = await Promise.all([
       // Purchase metrics are filtered by period.
       // total_customers / active_customers are always global (base size never changes with period).
       pool.query(`
@@ -66,6 +71,18 @@ export async function GET(req: NextRequest) {
         GROUP BY TO_CHAR(purchase_date, 'YYYY-MM')
         ORDER BY month ASC
       `, periodParams),
+      // Avg items (units) per order — filtered by period, requires JOIN with purchase_items
+      pool.query(`
+        SELECT
+          COALESCE(
+            SUM(pi.quantity)::numeric / NULLIF(COUNT(DISTINCT pu.id), 0),
+            0
+          )::numeric AS avg_items_per_order,
+          COALESCE(SUM(pi.quantity), 0)::int AS total_units
+        FROM purchases pu
+        JOIN purchase_items pi ON pi.purchase_id = pu.id
+        WHERE ${revenueWhereAliased}
+      `, periodParams),
       // Top states — global customer base, not period-sensitive
       pool.query(`
         SELECT
@@ -82,7 +99,7 @@ export async function GET(req: NextRequest) {
     ])
 
     return NextResponse.json({
-      metrics:     metrics.rows[0],
+      metrics:     { ...metrics.rows[0], ...itemsMetrics.rows[0] },
       monthlySales: monthlySales.rows,
       topCities:   topCities.rows,
     })

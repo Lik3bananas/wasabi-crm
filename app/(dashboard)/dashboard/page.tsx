@@ -13,9 +13,11 @@ interface Metrics {
   total_revenue:    string
   avg_order_value:  string
   unique_customers: number
-  wbuy_orders:      number
-  wix_orders:       number
-  pdv_orders:       number
+  wbuy_orders:         number
+  wix_orders:          number
+  pdv_orders:          number
+  avg_items_per_order: string
+  total_units:         number
 }
 
 interface MonthlySale { month: string; orders: number; revenue: string }
@@ -178,6 +180,20 @@ export default function DashboardPage() {
             <MetricCard
               label="Ticket Médio"
               value={fmt(data.metrics.avg_order_value)}
+            />
+          </div>
+
+          {/* Items-per-order row */}
+          <div className="grid grid-cols-2 lg:grid-cols-2 gap-4 mb-8">
+            <MetricCard
+              label="Peças por Venda"
+              value={Number(data.metrics.avg_items_per_order).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+              sub="média de itens por pedido"
+            />
+            <MetricCard
+              label="Total de Peças Vendidas"
+              value={data.metrics.total_units.toLocaleString('pt-BR')}
+              sub="unidades no período"
             />
           </div>
 
