@@ -13,9 +13,13 @@ export async function GET(req: NextRequest) {
   // Build shared period conditions for purchase-based metrics.
   // Ghost rows (total_amount = 0) are always excluded.
   // Two variants: plain (no alias) for queries without JOIN, aliased (pu.) for JOIN queries.
+  // Subquery to restrict to CPF customers (pessoas físicas) only
+  const cpfOnly         = `customer_id IN (SELECT id FROM customers WHERE cpf_encrypted IS NOT NULL)`
+  const cpfOnlyAliased  = `pu.customer_id IN (SELECT id FROM customers WHERE cpf_encrypted IS NOT NULL)`
+
   const periodParams: unknown[] = []
-  const periodConds:        string[] = ['total_amount > 0']
-  const periodCondsAliased: string[] = ['pu.total_amount > 0']
+  const periodConds:        string[] = ['total_amount > 0', cpfOnly]
+  const periodCondsAliased: string[] = ['pu.total_amount > 0', cpfOnlyAliased]
   let idx = 1
 
   if (dateFrom) {
@@ -48,8 +52,8 @@ export async function GET(req: NextRequest) {
       // total_customers / active_customers are always global (base size never changes with period).
       pool.query(`
         SELECT
-          (SELECT COUNT(*)::int FROM customers WHERE is_active = true) AS total_customers,
-          (SELECT COUNT(*)::int FROM customers WHERE is_active = true) AS active_customers,
+          (SELECT COUNT(*)::int FROM customers WHERE is_active = true AND cpf_encrypted IS NOT NULL) AS total_customers,
+          (SELECT COUNT(*)::int FROM customers WHERE is_active = true AND cpf_encrypted IS NOT NULL) AS active_customers,
           COUNT(*)::int                                                AS total_orders,
           COALESCE(SUM(total_amount), 0)::numeric                     AS total_revenue,
           COALESCE(AVG(total_amount), 0)::numeric                     AS avg_order_value,
@@ -92,6 +96,7 @@ export async function GET(req: NextRequest) {
         WHERE address_state IS NOT NULL
           AND TRIM(address_state) != ''
           AND total_spent > 0
+          AND cpf_encrypted IS NOT NULL
         GROUP BY TRIM(SPLIT_PART(address_state, '|', 1))
         ORDER BY total DESC
         LIMIT 10

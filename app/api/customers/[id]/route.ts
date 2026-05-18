@@ -39,6 +39,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 })
     }
 
+    // Block legal entities (CNPJ): only pessoas físicas (CPF) are served by this app
+    if (!primary.rows[0].cpf_encrypted) {
+      return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 })
+    }
+
     const c = primary.rows[0]
 
     // Find all customer IDs sharing the same email (deduplication siblings)

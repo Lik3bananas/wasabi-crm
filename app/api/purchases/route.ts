@@ -30,7 +30,10 @@ export async function GET(req: NextRequest) {
   const limit = 50
   const offset = (page - 1) * limit
 
-  const conditions: string[] = []
+  // Pedidos com valor zero são registros fantasma (wBuy checkpoint rows).
+  // Nunca devem aparecer em nenhuma listagem ou métrica.
+  // Ghost rows excluded; only purchases from CPF customers (pessoas físicas)
+  const conditions: string[] = ['pu.total_amount > 0', 'c.cpf_encrypted IS NOT NULL']
   const params: unknown[] = []
   let p = 1
 
