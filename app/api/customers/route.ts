@@ -63,12 +63,12 @@ export async function GET(req: NextRequest) {
   }
 
   if (dateFrom && dateTo) {
-    conditions.push(`EXISTS (SELECT 1 FROM purchases pu WHERE pu.customer_id = c.id AND pu.purchase_date BETWEEN $${p} AND $${p + 1}::date + INTERVAL '1 day')`)
+    conditions.push(`EXISTS (SELECT 1 FROM purchases pu WHERE pu.customer_id = c.id AND pu.total_amount > 0 AND pu.purchase_date BETWEEN $${p} AND $${p + 1}::date + INTERVAL '1 day')`)
     params.push(dateFrom, dateTo)
     p += 2
   } else if (dateFrom) {
     // Use actual purchase records — last_purchase_date column may have DD/MM swap errors from import
-    conditions.push(`EXISTS (SELECT 1 FROM purchases pu WHERE pu.customer_id = c.id AND pu.purchase_date >= $${p})`)
+    conditions.push(`EXISTS (SELECT 1 FROM purchases pu WHERE pu.customer_id = c.id AND pu.total_amount > 0 AND pu.purchase_date >= $${p})`)
     params.push(dateFrom)
     p++
   }

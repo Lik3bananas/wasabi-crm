@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   if (search) { conditions.push(`(c.full_name ILIKE $${p} OR c.email ILIKE $${p} OR c.phone ILIKE $${p})`); params.push(`%${search}%`); p++ }
   if (city) { conditions.push(`c.address_city ILIKE $${p}`); params.push(`%${city}%`); p++ }
   if (state) { conditions.push(`c.address_state ILIKE $${p}`); params.push(`%${state}%`); p++ }
-  if (dateFrom && dateTo) { conditions.push(`EXISTS (SELECT 1 FROM purchases pu WHERE pu.customer_id = c.id AND pu.purchase_date BETWEEN $${p} AND $${p+1})`); params.push(dateFrom, dateTo); p += 2 }
+  if (dateFrom && dateTo) { conditions.push(`EXISTS (SELECT 1 FROM purchases pu WHERE pu.customer_id = c.id AND pu.total_amount > 0 AND pu.purchase_date BETWEEN $${p} AND $${p+1})`); params.push(dateFrom, dateTo); p += 2 }
   if (filter === 'inactive_30') conditions.push(`c.last_purchase_date < NOW() - INTERVAL '30 days'`)
   if (filter === 'inactive_60') conditions.push(`c.last_purchase_date < NOW() - INTERVAL '60 days'`)
   if (filter === 'inactive_90') conditions.push(`c.last_purchase_date < NOW() - INTERVAL '90 days'`)

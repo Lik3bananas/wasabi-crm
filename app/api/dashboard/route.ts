@@ -15,9 +15,9 @@ export async function GET() {
         SELECT
           COUNT(*)::int AS total_customers,
           COUNT(*) FILTER (WHERE is_active = true)::int AS active_customers,
-          (SELECT COUNT(*)::int FROM purchases) AS total_orders,
-          (SELECT COALESCE(SUM(total_amount), 0)::numeric FROM purchases WHERE status != 'cancelled') AS total_revenue,
-          (SELECT COALESCE(AVG(total_amount), 0)::numeric FROM purchases WHERE status != 'cancelled') AS avg_order_value,
+          (SELECT COUNT(*)::int FROM purchases WHERE total_amount > 0) AS total_orders,
+          (SELECT COALESCE(SUM(total_amount), 0)::numeric FROM purchases WHERE status != 'cancelled' AND total_amount > 0) AS total_revenue,
+          (SELECT COALESCE(AVG(total_amount), 0)::numeric FROM purchases WHERE status != 'cancelled' AND total_amount > 0) AS avg_order_value,
           COUNT(*) FILTER (WHERE source_channel = 'wbuy')::int AS wbuy_customers,
           COUNT(*) FILTER (WHERE source_channel = 'legacy_spreadsheet')::int AS legacy_customers
         FROM customers
@@ -29,6 +29,7 @@ export async function GET() {
           SUM(total_amount)::numeric AS revenue
         FROM purchases
         WHERE status != 'cancelled'
+          AND total_amount > 0
           AND purchase_date >= NOW() - INTERVAL '12 months'
         GROUP BY TO_CHAR(purchase_date, 'YYYY-MM')
         ORDER BY month ASC
