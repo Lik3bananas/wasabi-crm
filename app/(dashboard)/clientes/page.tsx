@@ -397,7 +397,7 @@ function ClientesContent() {
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Cidade</th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                     <button onClick={() => handleSort('total_spent')} className="flex items-center ml-auto hover:text-gray-700 transition">
-                      Total Gasto<SortIcon col="total_spent" />
+                      Acumulado Comprado<SortIcon col="total_spent" />
                     </button>
                   </th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">

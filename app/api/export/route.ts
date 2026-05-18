@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
       c.phone AS "Telefone",
       TRIM(SPLIT_PART(c.address_city, '|', 1)) AS "Cidade",
       TRIM(SPLIT_PART(c.address_state, '|', 1)) AS "Estado",
-      c.total_spent AS "Total Gasto (R$)",
+      c.total_spent AS "Acumulado Comprado (R$)",
       c.purchase_count AS "Nº Pedidos",
       c.first_purchase_date AS "Primeira Compra",
       c.last_purchase_date AS "Última Compra",
