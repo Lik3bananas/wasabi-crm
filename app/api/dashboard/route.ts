@@ -49,8 +49,9 @@ export async function GET(req: NextRequest) {
           COALESCE(SUM(total_amount), 0)::numeric                     AS total_revenue,
           COALESCE(AVG(total_amount), 0)::numeric                     AS avg_order_value,
           COUNT(DISTINCT customer_id)::int                            AS unique_customers,
-          COUNT(*) FILTER (WHERE source_channel = 'wbuy')::int              AS wbuy_orders,
-          COUNT(*) FILTER (WHERE source_channel = 'legacy_spreadsheet')::int AS legacy_orders
+          COUNT(*) FILTER (WHERE source_channel = 'wbuy')::int   AS wbuy_orders,
+          COUNT(*) FILTER (WHERE source_channel = 'legacy')::int  AS wix_orders,
+          COUNT(*) FILTER (WHERE source_channel = 'pdvnet')::int  AS pdv_orders
         FROM purchases
         WHERE ${revenueWhere}
       `, periodParams),

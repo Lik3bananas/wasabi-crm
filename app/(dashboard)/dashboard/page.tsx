@@ -14,7 +14,8 @@ interface Metrics {
   avg_order_value:  string
   unique_customers: number
   wbuy_orders:      number
-  legacy_orders:    number
+  wix_orders:       number
+  pdv_orders:       number
 }
 
 interface MonthlySale { month: string; orders: number; revenue: string }
@@ -208,8 +209,9 @@ export default function DashboardPage() {
               <h2 className="text-sm font-semibold text-gray-700 mb-4">Canal de Origem</h2>
               <div className="space-y-3">
                 {[
-                  { label: 'wBuy',             count: data.metrics.wbuy_orders,   color: 'bg-green-500' },
-                  { label: 'Planilha (legado)', count: data.metrics.legacy_orders, color: 'bg-green-300' },
+                  { label: 'PDV',   count: data.metrics.pdv_orders,  color: 'bg-green-600' },
+                  { label: 'wBuy',  count: data.metrics.wbuy_orders,  color: 'bg-green-400' },
+                  { label: 'Wix',   count: data.metrics.wix_orders,   color: 'bg-green-200' },
                 ].map(({ label, count, color }) => (
                   <div key={label}>
                     <div className="flex justify-between text-xs text-gray-600 mb-1">
