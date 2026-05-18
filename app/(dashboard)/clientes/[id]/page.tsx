@@ -148,7 +148,7 @@ export default function CustomerProfilePage() {
           <p className="text-xl font-bold text-green-700">{fmt(customer.total_spent)}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <p className="text-xs text-gray-400 mb-1">Pedidos</p>
+          <p className="text-xs text-gray-400 mb-1">Histórico de Compras</p>
           <p className="text-xl font-bold text-gray-800">{customer.purchase_count}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
@@ -221,11 +221,11 @@ export default function CustomerProfilePage() {
         </div>
       </div>
 
-      {/* Histórico de Pedidos */}
+      {/* Histórico de Compras */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-gray-700">
-            Histórico de Pedidos ({purchases.length})
+            Histórico de Compras ({purchases.length})
           </h2>
           <span className="text-sm font-bold text-green-700">{fmt(totalRevenue)} em compras</span>
         </div>
