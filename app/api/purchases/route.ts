@@ -66,6 +66,8 @@ export async function GET(req: NextRequest) {
       `SELECT
         pu.id, pu.customer_id, c.full_name AS customer_name,
         pu.purchase_date, pu.total_amount, pu.status, pu.source_channel,
+        l.nome  AS loja_nome,
+        v.nome  AS vendedora_nome,
         COUNT(pi.id)::int AS item_count,
         COALESCE(
           JSON_AGG(
@@ -81,9 +83,11 @@ export async function GET(req: NextRequest) {
         ) AS items
        FROM purchases pu
        JOIN customers c ON c.id = pu.customer_id
+       LEFT JOIN lojas      l  ON l.pdv_id  = pu.loja_id
+       LEFT JOIN vendedores v  ON v.pdv_id  = pu.vendedor_pdv_id
        LEFT JOIN purchase_items pi ON pi.purchase_id = pu.id
        ${where}
-       GROUP BY pu.id, c.full_name
+       GROUP BY pu.id, c.full_name, l.nome, v.nome
        ORDER BY pu.purchase_date DESC
        LIMIT $${p} OFFSET $${p + 1}`,
       [...params, limit, offset]

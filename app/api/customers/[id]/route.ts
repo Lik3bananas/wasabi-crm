@@ -150,6 +150,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
          d.status,
          d.source_channel,
          d.customer_channel,
+         l.nome AS loja_nome,
+         v.nome AS vendedora_nome,
          COALESCE(
            (
              SELECT JSON_AGG(
@@ -173,6 +175,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
            '[]'::json
          ) AS items
        FROM deduped d
+       LEFT JOIN purchases     pu_w ON pu_w.id = d.id
+       LEFT JOIN lojas         l    ON l.pdv_id  = pu_w.loja_id
+       LEFT JOIN vendedores    v    ON v.pdv_id  = pu_w.vendedor_pdv_id
        ORDER BY d.purchase_date DESC`,
       [siblingIds]
     )

@@ -18,6 +18,8 @@ interface Purchase {
   status: string
   source_channel: string
   customer_channel: string
+  loja_nome: string | null
+  vendedora_nome: string | null
   items: Item[]
 }
 
@@ -247,6 +249,16 @@ export default function CustomerProfilePage() {
                       {statusLabel[p.status] || p.status}
                     </span>
                     <ChannelBadge channel={p.source_channel || p.customer_channel} />
+                    {p.loja_nome && (
+                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                        🏪 {p.loja_nome}
+                      </span>
+                    )}
+                    {p.vendedora_nome && (
+                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                        👤 {p.vendedora_nome}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="font-semibold text-green-700">{fmt(p.total_amount)}</span>

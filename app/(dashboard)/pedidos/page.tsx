@@ -19,6 +19,8 @@ interface Purchase {
   total_amount: string
   status: string
   source_channel: string
+  loja_nome: string | null
+  vendedora_nome: string | null
   item_count: number
   items: Item[]
 }
@@ -162,6 +164,8 @@ function PedidosContent() {
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Valor</th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Itens</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Loja</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Vendedora</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Canal</th>
                 </tr>
               </thead>
@@ -197,6 +201,8 @@ function PedidosContent() {
                         </td>
                         <td className="px-4 py-3 text-right font-semibold text-gray-800">{fmt(p.total_amount)}</td>
                         <td className="px-4 py-3 text-right text-gray-600">{p.item_count}</td>
+                        <td className="px-4 py-3 text-gray-600 text-xs">{p.loja_nome || '—'}</td>
+                        <td className="px-4 py-3 text-gray-600 text-xs">{p.vendedora_nome || '—'}</td>
                         <td className="px-4 py-3">
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                             p.source_channel === 'wbuy' ? 'bg-blue-100 text-blue-700'
@@ -215,7 +221,7 @@ function PedidosContent() {
                       {/* Expanded products row */}
                       {isOpen && (
                         <tr key={`${p.id}-items`} className="bg-blue-50/40">
-                          <td colSpan={8} className="px-10 py-4">
+                          <td colSpan={10} className="px-10 py-4">
                             {p.items.length === 0 ? (
                               <p className="text-xs text-gray-400 italic">Sem itens registrados para este pedido.</p>
                             ) : (
