@@ -39,8 +39,8 @@ export async function GET(req: NextRequest) {
   const limit = 50
   const offset = (page - 1) * limit
 
-  // Always exclude inactive (test/training) customers
-  const conditions: string[] = ['c.is_active = true']
+  // Always exclude inactive (test/training) customers and ghost records with zero spend
+  const conditions: string[] = ['c.is_active = true', 'c.total_spent > 0']
   const params: unknown[] = []
   let p = 1
 

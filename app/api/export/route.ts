@@ -15,7 +15,8 @@ export async function GET(req: NextRequest) {
   const dateFrom = searchParams.get('date_from') || ''
   const dateTo = searchParams.get('date_to') || ''
 
-  const conditions: string[] = []
+  // Exclude ghost records (zero-spend customers created by wBuy checkout steps)
+  const conditions: string[] = ['c.total_spent > 0']
   const params: unknown[] = []
   let p = 1
 
