@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
   const chartWhere = chartConds.join(' AND ')
 
   try {
-    const [metrics, monthlySales, topCities, itemsMetrics] = await Promise.all([
+    const [metrics, monthlySales, itemsMetrics, topCities] = await Promise.all([
       // Purchase metrics are filtered by period.
       // total_customers / active_customers are always global (base size never changes with period).
       pool.query(`
