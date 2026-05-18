@@ -35,51 +35,6 @@ function fmtBR(iso: string) {
   return `${d}/${m}/${y}`
 }
 
-// ─── Period presets ───────────────────────────────────────────────────────────
-type Preset = 'today' | 'yesterday' | 'last7' | 'last30' | 'this_month' | 'last_month' | 'custom'
-
-const PRESET_LABELS: Record<Preset, string> = {
-  today:      'Hoje',
-  yesterday:  'Ontem',
-  last7:      'Últimos 7 dias',
-  last30:     'Últimos 30 dias',
-  this_month: 'Este mês',
-  last_month: 'Mês passado',
-  custom:     'Personalizado',
-}
-
-function getPresetRange(p: Preset): { from: string; to: string } {
-  const now   = new Date()
-  const today = toISO(now)
-  switch (p) {
-    case 'today':
-      return { from: today, to: today }
-    case 'yesterday': {
-      const d = new Date(now); d.setDate(d.getDate() - 1); const s = toISO(d)
-      return { from: s, to: s }
-    }
-    case 'last7': {
-      const d = new Date(now); d.setDate(d.getDate() - 6)
-      return { from: toISO(d), to: today }
-    }
-    case 'last30': {
-      const d = new Date(now); d.setDate(d.getDate() - 29)
-      return { from: toISO(d), to: today }
-    }
-    case 'this_month': {
-      const d = new Date(now.getFullYear(), now.getMonth(), 1)
-      return { from: toISO(d), to: today }
-    }
-    case 'last_month': {
-      const from = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-      const to   = new Date(now.getFullYear(), now.getMonth(), 0)
-      return { from: toISO(from), to: toISO(to) }
-    }
-    default:
-      return { from: '', to: '' }
-  }
-}
-
 // ─── MetricCard ───────────────────────────────────────────────────────────────
 function MetricCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
@@ -93,11 +48,13 @@ function MetricCard({ label, value, sub }: { label: string; value: string | numb
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
-  const [data, setData]         = useState<{ metrics: Metrics; monthlySales: MonthlySale[]; topCities: TopCity[] } | null>(null)
-  const [loading, setLoading]   = useState(true)
-  const [preset, setPreset]     = useState<Preset>('this_month')
-  const [customFrom, setCustomFrom] = useState('')
-  const [customTo,   setCustomTo]   = useState('')
+  const [data, setData]       = useState<{ metrics: Metrics; monthlySales: MonthlySale[]; topCities: TopCity[] } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo,   setDateTo]   = useState('')
+  // Track the applied range to show in the chart subtitle
+  const [appliedFrom, setAppliedFrom] = useState('')
+  const [appliedTo,   setAppliedTo]   = useState('')
 
   const fetchData = useCallback((from: string, to: string) => {
     setLoading(true)
@@ -113,37 +70,39 @@ export default function DashboardPage() {
 
   // Default: este mês
   useEffect(() => {
-    const { from, to } = getPresetRange('this_month')
+    const now  = new Date()
+    const from = toISO(new Date(now.getFullYear(), now.getMonth(), 1))
+    const to   = toISO(now)
+    setDateFrom(from)
+    setDateTo(to)
+    setAppliedFrom(from)
+    setAppliedTo(to)
     fetchData(from, to)
   }, [fetchData])
 
-  function selectPreset(p: Preset) {
-    setPreset(p)
-    if (p === 'custom') return          // wait for user to fill dates
-    const { from, to } = getPresetRange(p)
-    fetchData(from, to)
+  function applyFilter() {
+    setAppliedFrom(dateFrom)
+    setAppliedTo(dateTo)
+    fetchData(dateFrom, dateTo)
   }
 
-  function applyCustom() {
-    if (!customFrom || !customTo) return
-    fetchData(customFrom, customTo)
+  function clearFilter() {
+    setDateFrom('')
+    setDateTo('')
+    setAppliedFrom('')
+    setAppliedTo('')
+    fetchData('', '')
   }
 
-  function periodDescription() {
-    if (preset === 'custom') {
-      if (customFrom && customTo) return `${fmtBR(customFrom)} – ${fmtBR(customTo)}`
-      return 'Período personalizado'
-    }
-    return PRESET_LABELS[preset]
-  }
+  const chartSubtitle = appliedFrom && appliedTo
+    ? `${fmtBR(appliedFrom)} – ${fmtBR(appliedTo)}`
+    : 'Todo o período'
 
   const chartData = (data?.monthlySales ?? []).map((m) => ({
     mes:     m.month.slice(5) + '/' + m.month.slice(2, 4),
     Receita: Number(m.revenue),
     Pedidos: m.orders,
   }))
-
-  const PRESETS: Preset[] = ['today', 'yesterday', 'last7', 'last30', 'this_month', 'last_month', 'custom']
 
   return (
     <div>
@@ -154,55 +113,43 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Period filter ──────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Período de análise</p>
-        <div className="flex flex-wrap gap-2">
-          {PRESETS.map((p) => (
-            <button
-              key={p}
-              onClick={() => selectPreset(p)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                preset === p
-                  ? 'bg-green-600 text-white shadow-sm'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {PRESET_LABELS[p]}
-            </button>
-          ))}
-        </div>
-
-        {/* Custom date range */}
-        {preset === 'custom' && (
-          <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-gray-100">
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-500">De</label>
-              <input
-                type="date"
-                value={customFrom}
-                onChange={(e) => setCustomFrom(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-500">Até</label>
-              <input
-                type="date"
-                value={customTo}
-                min={customFrom}
-                onChange={(e) => setCustomTo(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
-              />
-            </div>
-            <button
-              onClick={applyCustom}
-              disabled={!customFrom || !customTo}
-              className="px-4 py-1.5 bg-green-600 text-white text-sm font-medium rounded-lg disabled:opacity-40 hover:bg-green-700 transition-colors"
-            >
-              Buscar
-            </button>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-5 py-4 mb-6">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Data inicial</label>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
           </div>
-        )}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Data final</label>
+            <input
+              type="date"
+              value={dateTo}
+              min={dateFrom}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </div>
+          <button
+            onClick={applyFilter}
+            disabled={!dateFrom || !dateTo}
+            className="px-5 py-2 bg-green-600 text-white text-sm font-medium rounded-lg disabled:opacity-40 hover:bg-green-700 transition-colors"
+          >
+            Aplicar
+          </button>
+          {(appliedFrom || appliedTo) && (
+            <button
+              onClick={clearFilter}
+              className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              Limpar
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Content ────────────────────────────────────────────────────────── */}
@@ -237,10 +184,8 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
             {/* Revenue chart */}
             <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-              <h2 className="text-sm font-semibold text-gray-700 mb-1">
-                Receita por Período
-              </h2>
-              <p className="text-xs text-gray-400 mb-4">{periodDescription()}</p>
+              <h2 className="text-sm font-semibold text-gray-700 mb-1">Receita por Período</h2>
+              <p className="text-xs text-gray-400 mb-4">{chartSubtitle}</p>
               {chartData.length === 0 ? (
                 <div className="flex items-center justify-center h-[220px] text-gray-400 text-sm">
                   Nenhum dado para o período selecionado
