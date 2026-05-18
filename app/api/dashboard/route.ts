@@ -48,8 +48,8 @@ export async function GET(req: NextRequest) {
       // total_customers / active_customers are always global (base size never changes with period).
       pool.query(`
         SELECT
-          (SELECT COUNT(*)::int FROM customers WHERE is_active = true AND cpf_encrypted IS NOT NULL) AS total_customers,
-          (SELECT COUNT(*)::int FROM customers WHERE is_active = true AND cpf_encrypted IS NOT NULL) AS active_customers,
+          (SELECT COUNT(*)::int FROM customers WHERE is_active = true AND total_spent > 0 AND (source_channel != 'pdvnet' OR cpf_encrypted IS NOT NULL)) AS total_customers,
+          (SELECT COUNT(*)::int FROM customers WHERE is_active = true AND total_spent > 0 AND (source_channel != 'pdvnet' OR cpf_encrypted IS NOT NULL)) AS active_customers,
           COUNT(*)::int                                                AS total_orders,
           COALESCE(SUM(total_amount), 0)::numeric                     AS total_revenue,
           COALESCE(AVG(total_amount), 0)::numeric                     AS avg_order_value,
@@ -92,7 +92,7 @@ export async function GET(req: NextRequest) {
         WHERE address_state IS NOT NULL
           AND TRIM(address_state) != ''
           AND total_spent > 0
-          AND cpf_encrypted IS NOT NULL
+          AND (source_channel != 'pdvnet' OR cpf_encrypted IS NOT NULL)
         GROUP BY TRIM(SPLIT_PART(address_state, '|', 1))
         ORDER BY total DESC
         LIMIT 10

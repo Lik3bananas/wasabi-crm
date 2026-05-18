@@ -40,8 +40,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 })
     }
 
-    // Block legal entities (CNPJ): only pessoas físicas (CPF) are served by this app
-    if (!primary.rows[0].cpf_encrypted) {
+    // Block PDVNet customers without CPF (legal entities / CNPJ).
+    // wBuy and legacy customers are all individuals — always allow.
+    const c0 = primary.rows[0]
+    if (c0.source_channel === 'pdvnet' && !c0.cpf_encrypted) {
       return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 })
     }
 

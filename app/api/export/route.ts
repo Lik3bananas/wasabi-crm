@@ -15,8 +15,11 @@ export async function GET(req: NextRequest) {
   const dateFrom = searchParams.get('date_from') || ''
   const dateTo = searchParams.get('date_to') || ''
 
-  // Exclude ghost records and legal entities (CNPJ); show only pessoas físicas (CPF)
-  const conditions: string[] = ['c.total_spent > 0', 'c.cpf_encrypted IS NOT NULL']
+  // Exclude ghost records; PDVNet without CPF = company → hide; wBuy/legacy = always show
+  const conditions: string[] = [
+    'c.total_spent > 0',
+    `(c.source_channel != 'pdvnet' OR c.cpf_encrypted IS NOT NULL)`,
+  ]
   const params: unknown[] = []
   let p = 1
 

@@ -39,9 +39,14 @@ export async function GET(req: NextRequest) {
   const limit = 50
   const offset = (page - 1) * limit
 
-  // Always exclude inactive customers, zero-spend ghosts, and legal entities (CNPJ).
-  // cpf_encrypted IS NOT NULL means the customer was identified by CPF (pessoa física).
-  const conditions: string[] = ['c.is_active = true', 'c.total_spent > 0', 'c.cpf_encrypted IS NOT NULL']
+  // Always exclude inactive customers and zero-spend ghosts.
+  // For PDVNet customers: require CPF (no CPF = company/CNPJ → hide).
+  // wBuy and legacy customers are all individuals — show regardless of CPF.
+  const conditions: string[] = [
+    'c.is_active = true',
+    'c.total_spent > 0',
+    `(c.source_channel != 'pdvnet' OR c.cpf_encrypted IS NOT NULL)`,
+  ]
   const params: unknown[] = []
   let p = 1
 

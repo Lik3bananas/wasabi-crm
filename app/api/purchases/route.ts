@@ -32,8 +32,11 @@ export async function GET(req: NextRequest) {
 
   // Pedidos com valor zero são registros fantasma (wBuy checkpoint rows).
   // Nunca devem aparecer em nenhuma listagem ou métrica.
-  // Ghost rows excluded; only purchases from CPF customers (pessoas físicas)
-  const conditions: string[] = ['pu.total_amount > 0', 'c.cpf_encrypted IS NOT NULL']
+  // Ghost rows excluded; PDVNet without CPF = company → hide; wBuy/legacy = always show
+  const conditions: string[] = [
+    'pu.total_amount > 0',
+    `(c.source_channel != 'pdvnet' OR c.cpf_encrypted IS NOT NULL)`,
+  ]
   const params: unknown[] = []
   let p = 1
 
