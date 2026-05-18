@@ -166,7 +166,7 @@ export default function DashboardPage() {
               value={fmt(data.metrics.total_revenue)}
             />
             <MetricCard
-              label="Clientes Únicos"
+              label="Clientes"
               value={data.metrics.unique_customers.toLocaleString('pt-BR')}
               sub={`de ${data.metrics.total_customers.toLocaleString('pt-BR')} na base`}
             />
