@@ -18,7 +18,7 @@ interface Metrics {
 }
 
 interface MonthlySale { month: string; orders: number; revenue: string }
-interface TopCity      { city: string; state: string; total: number }
+interface TopState     { state: string; total: number }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmt(val: string | number) {
@@ -48,7 +48,7 @@ function MetricCard({ label, value, sub }: { label: string; value: string | numb
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
-  const [data, setData]       = useState<{ metrics: Metrics; monthlySales: MonthlySale[]; topCities: TopCity[] } | null>(null)
+  const [data, setData]       = useState<{ metrics: Metrics; monthlySales: MonthlySale[]; topCities: TopState[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo,   setDateTo]   = useState('')
@@ -230,11 +230,11 @@ export default function DashboardPage() {
                 ))}
               </div>
 
-              <h2 className="text-sm font-semibold text-gray-700 mt-6 mb-3">Top Cidades</h2>
+              <h2 className="text-sm font-semibold text-gray-700 mt-6 mb-3">Top Estados</h2>
               <div className="space-y-1.5">
-                {data.topCities.slice(0, 6).map((c) => (
-                  <div key={`${c.city}-${c.state}`} className="flex justify-between text-xs text-gray-600">
-                    <span className="truncate">{c.city}{c.state ? ` — ${c.state}` : ''}</span>
+                {data.topCities.slice(0, 8).map((c) => (
+                  <div key={c.state} className="flex justify-between text-xs text-gray-600">
+                    <span>{c.state || '—'}</span>
                     <span className="font-medium ml-2">{c.total}</span>
                   </div>
                 ))}

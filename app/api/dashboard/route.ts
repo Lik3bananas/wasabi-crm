@@ -65,19 +65,16 @@ export async function GET(req: NextRequest) {
         GROUP BY TO_CHAR(purchase_date, 'YYYY-MM')
         ORDER BY month ASC
       `, periodParams),
-      // Top cities — global customer base, not period-sensitive
+      // Top states — global customer base, not period-sensitive
       pool.query(`
         SELECT
-          TRIM(SPLIT_PART(address_city,  '|', 1)) AS city,
           TRIM(SPLIT_PART(address_state, '|', 1)) AS state,
           COUNT(*)::int AS total
         FROM customers
-        WHERE address_city IS NOT NULL
-          AND TRIM(address_city) != ''
+        WHERE address_state IS NOT NULL
+          AND TRIM(address_state) != ''
           AND total_spent > 0
-        GROUP BY
-          TRIM(SPLIT_PART(address_city,  '|', 1)),
-          TRIM(SPLIT_PART(address_state, '|', 1))
+        GROUP BY TRIM(SPLIT_PART(address_state, '|', 1))
         ORDER BY total DESC
         LIMIT 10
       `),
