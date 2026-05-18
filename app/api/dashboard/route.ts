@@ -1,56 +1,92 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import pool from '@/lib/db'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const { searchParams } = req.nextUrl
+  const dateFrom = searchParams.get('date_from') || ''
+  const dateTo   = searchParams.get('date_to')   || ''
+
+  // Build shared period conditions for purchase-based metrics.
+  // Ghost rows (total_amount = 0) are always excluded.
+  const periodParams: unknown[] = []
+  const periodConds: string[]   = ['total_amount > 0']
+  let idx = 1
+
+  if (dateFrom) {
+    periodConds.push(`purchase_date >= $${idx}`)
+    periodParams.push(dateFrom)
+    idx++
+  }
+  if (dateTo) {
+    periodConds.push(`purchase_date < $${idx}::date + INTERVAL '1 day'`)
+    periodParams.push(dateTo)
+    idx++
+  }
+
+  // Revenue / orders metrics also exclude cancelled
+  const revenueWhere = [...periodConds, `status != 'cancelled'`].join(' AND ')
+
+  // Monthly chart: same filter, but default to last 12 months when no period is set
+  const chartConds = [...periodConds, `status != 'cancelled'`]
+  if (!dateFrom && !dateTo) {
+    chartConds.push(`purchase_date >= NOW() - INTERVAL '12 months'`)
+  }
+  const chartWhere = chartConds.join(' AND ')
+
   try {
-    // Use pool.query() (not a shared client) so each query runs on its own connection
-    // Running multiple client.query() in Promise.all on the same PoolClient causes
-    // "missing FROM-clause entry" errors due to concurrent query execution on one socket
     const [metrics, monthlySales, topCities] = await Promise.all([
+      // Purchase metrics are filtered by period.
+      // total_customers / active_customers are always global (base size never changes with period).
       pool.query(`
         SELECT
-          COUNT(*)::int AS total_customers,
-          COUNT(*) FILTER (WHERE is_active = true)::int AS active_customers,
-          (SELECT COUNT(*)::int FROM purchases WHERE total_amount > 0) AS total_orders,
-          (SELECT COALESCE(SUM(total_amount), 0)::numeric FROM purchases WHERE status != 'cancelled' AND total_amount > 0) AS total_revenue,
-          (SELECT COALESCE(AVG(total_amount), 0)::numeric FROM purchases WHERE status != 'cancelled' AND total_amount > 0) AS avg_order_value,
-          COUNT(*) FILTER (WHERE source_channel = 'wbuy')::int AS wbuy_customers,
-          COUNT(*) FILTER (WHERE source_channel = 'legacy_spreadsheet')::int AS legacy_customers
-        FROM customers
-      `),
+          (SELECT COUNT(*)::int FROM customers WHERE is_active = true) AS total_customers,
+          (SELECT COUNT(*)::int FROM customers WHERE is_active = true) AS active_customers,
+          COUNT(*)::int                                                AS total_orders,
+          COALESCE(SUM(total_amount), 0)::numeric                     AS total_revenue,
+          COALESCE(AVG(total_amount), 0)::numeric                     AS avg_order_value,
+          COUNT(DISTINCT customer_id)::int                            AS unique_customers,
+          COUNT(*) FILTER (WHERE source_channel = 'wbuy')::int              AS wbuy_orders,
+          COUNT(*) FILTER (WHERE source_channel = 'legacy_spreadsheet')::int AS legacy_orders
+        FROM purchases
+        WHERE ${revenueWhere}
+      `, periodParams),
+      // Monthly revenue chart — grouped by month, filtered by period
       pool.query(`
         SELECT
           TO_CHAR(purchase_date, 'YYYY-MM') AS month,
-          COUNT(*)::int AS orders,
-          SUM(total_amount)::numeric AS revenue
+          COUNT(*)::int                     AS orders,
+          SUM(total_amount)::numeric        AS revenue
         FROM purchases
-        WHERE status != 'cancelled'
-          AND total_amount > 0
-          AND purchase_date >= NOW() - INTERVAL '12 months'
+        WHERE ${chartWhere}
         GROUP BY TO_CHAR(purchase_date, 'YYYY-MM')
         ORDER BY month ASC
-      `),
+      `, periodParams),
+      // Top cities — global customer base, not period-sensitive
       pool.query(`
         SELECT
-          TRIM(SPLIT_PART(address_city, '|', 1)) AS city,
+          TRIM(SPLIT_PART(address_city,  '|', 1)) AS city,
           TRIM(SPLIT_PART(address_state, '|', 1)) AS state,
           COUNT(*)::int AS total
         FROM customers
-        WHERE address_city IS NOT NULL AND TRIM(address_city) != ''
-        GROUP BY TRIM(SPLIT_PART(address_city, '|', 1)), TRIM(SPLIT_PART(address_state, '|', 1))
+        WHERE address_city IS NOT NULL
+          AND TRIM(address_city) != ''
+          AND total_spent > 0
+        GROUP BY
+          TRIM(SPLIT_PART(address_city,  '|', 1)),
+          TRIM(SPLIT_PART(address_state, '|', 1))
         ORDER BY total DESC
         LIMIT 10
       `),
     ])
 
     return NextResponse.json({
-      metrics: metrics.rows[0],
+      metrics:     metrics.rows[0],
       monthlySales: monthlySales.rows,
-      topCities: topCities.rows,
+      topCities:   topCities.rows,
     })
   } catch (err) {
     console.error(err)
