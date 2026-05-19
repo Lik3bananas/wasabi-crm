@@ -45,7 +45,10 @@ export async function GET(req: NextRequest) {
       c.purchase_count AS "Nº Pedidos",
       c.first_purchase_date AS "Primeira Compra",
       c.last_purchase_date AS "Última Compra",
-      c.source_channel AS "Canal",
+      CASE
+        WHEN c.source_channel ILIKE '%elgado%' THEN 'Wix'
+        ELSE c.source_channel
+      END AS "Canal",
       CASE WHEN c.is_active THEN 'Ativo' ELSE 'Inativo' END AS "Status"
     FROM customers c ${where} ${orderBy} LIMIT 5000`,
     params

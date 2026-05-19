@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@puppeteer/browsers": "^3.0.3",
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
@@ -15,6 +16,7 @@
     "next": "16.2.6",
     "next-auth": "^5.0.0-beta.31",
     "pg": "^8.20.0",
+    "puppeteer-core": "^25.0.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.8.1"
